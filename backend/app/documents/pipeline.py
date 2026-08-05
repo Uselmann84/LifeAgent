@@ -13,8 +13,6 @@ never treated as instructions (content-trust / Section 35).
 
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import hashlib
 import json
 import re
@@ -26,6 +24,7 @@ from sqlmodel import Session
 
 from app.agent.content_trust import fence_untrusted
 from app.agent.llm.base import LLMRequest, TaskType
+from app.agent.llm.sync import run_sync
 from app.autonomy.router import get_router
 from app.core.config import Settings, get_settings
 from app.core.models import Document
@@ -47,17 +46,6 @@ class DocumentAnalysis:
     needs_vision: bool = False
     stored_document_id: str | None = None
     storage_ref: str | None = None
-
-
-def _run_sync(coro):
-    """Run an async coroutine from sync code, whether or not a loop is already running."""
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-    # Inside the autonomy loop: run on a worker thread with its own event loop.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, coro).result()
 
 
 def _safe_name(name: str) -> str:
@@ -95,7 +83,7 @@ class DocumentProcessor:
                 "Summarize the following document for the user in 2-3 sentences and note any "
                 "deadlines or required actions.\n\n" + fence_untrusted(extracted.text[:6000])
             )
-        summary = _run_sync(
+        summary = run_sync(
             self._router.complete(LLMRequest(prompt=prompt, task_type=TaskType.document))
         ).text.strip()
 
@@ -144,7 +132,7 @@ class DocumentProcessor:
             "(list of strings), reference_numbers (object). Document text follows.\n\n"
             + fence_untrusted(text[:6000])
         )
-        raw = _run_sync(
+        raw = run_sync(
             self._router.complete(LLMRequest(prompt=prompt, task_type=TaskType.extraction))
         ).text
         try:

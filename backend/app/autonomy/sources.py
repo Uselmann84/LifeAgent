@@ -21,7 +21,7 @@ from sqlmodel import Session, select
 
 from app.autonomy.events import Event, EventSource, EventType
 from app.core.config import Settings
-from app.core.models import EmailMessage, Task, TaskStatus, utcnow
+from app.core.models import EmailMessage, ImportanceCategory, Task, TaskStatus, utcnow
 
 logger = logging.getLogger("lifeagent.autonomy.sources")
 
@@ -79,6 +79,8 @@ class ProductionImapEmailEventSource:
 
     def poll(self, limit: int) -> list[Event]:
         # Lazy imports keep the base app free of integration internals.
+        from app.agent.importance import classify_email_importance
+        from app.autonomy.router import get_router
         from app.core.config import get_settings
         from app.documents.pipeline import DocumentProcessor
         from app.integrations.email.imap import EmailSyncDisabled, ImapEmailClient
@@ -93,8 +95,10 @@ class ProductionImapEmailEventSource:
             logger.exception("IMAP fetch failed")
             return []
 
-        process_docs = get_settings().feature_process_documents
-        processor = DocumentProcessor(self._session)
+        settings = get_settings()
+        process_docs = settings.feature_process_documents
+        processor = DocumentProcessor(self._session, settings)
+        router = get_router(settings)
         events: list[Event] = []
         for msg in fetched:
             if msg.uid in self._seen:
@@ -118,6 +122,22 @@ class ProductionImapEmailEventSource:
                         )
                     except Exception:  # pragma: no cover
                         logger.exception("attachment processing failed: %s", att.filename)
+
+            attachment_note = "; ".join(
+                f"{a['filename']}: {a['summary']}" for a in attachments if a.get("summary")
+            )
+            try:
+                importance, why = classify_email_importance(
+                    router,
+                    sender=msg.sender,
+                    subject=msg.subject,
+                    body=msg.body,
+                    attachment_note=attachment_note,
+                )
+            except Exception:  # pragma: no cover - classifier/model errors must not crash the loop
+                logger.exception("importance classification failed: %s", msg.uid)
+                importance, why = ImportanceCategory.informational, ""
+
             events.append(
                 Event(
                     type=EventType.email_received,
@@ -127,6 +147,8 @@ class ProductionImapEmailEventSource:
                         "email_id": msg.uid,
                         "sender": msg.sender,
                         "subject": msg.subject,
+                        "importance": importance.value,
+                        "why_it_matters": why,
                         # Body and attachment text are untrusted external content.
                         "body": msg.body,
                         "attachments": attachments,

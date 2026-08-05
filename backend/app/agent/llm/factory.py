@@ -1,8 +1,8 @@
 """LLM provider factory. Selects a provider by configuration.
 
-Only the mock provider is fully implemented in Phase 1. Real providers (ollama, openai_compatible,
-mlx, remote fallback) are wired here in later phases; requesting one before it is implemented fails
-loudly rather than silently degrading.
+The mock provider runs fully offline for development. The ``ollama`` provider serves a local model
+on the Backend Mac. Other real providers (openai_compatible, mlx, remote fallback) fail loudly until
+implemented rather than silently degrading.
 """
 
 from __future__ import annotations
@@ -20,9 +20,13 @@ def get_llm_provider() -> LLMProvider:
     provider = settings.llm_provider.lower()
     if provider == "mock":
         return MockLLMProvider()
-    if provider in {"ollama", "openai_compatible", "mlx"}:
+    if provider == "ollama":
+        from app.agent.llm.ollama import OllamaLLMProvider
+
+        return OllamaLLMProvider(settings)
+    if provider in {"openai_compatible", "mlx"}:
         raise NotImplementedError(
             f"LLM provider '{provider}' is not implemented yet (Phase 2+). "
-            "Set LIFE_AGENT_LLM_PROVIDER=mock for offline development."
+            "Set LIFE_AGENT_LLM_PROVIDER=mock or =ollama."
         )
     raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")

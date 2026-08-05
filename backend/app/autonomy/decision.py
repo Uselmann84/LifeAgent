@@ -88,11 +88,12 @@ class DecisionEngine:
     # --- handlers ---------------------------------------------------------------
     def _on_email(self, event: Event) -> Decision:
         importance = event.payload.get("importance", "informational")
+        why = (event.payload.get("why_it_matters") or "").strip()
         if importance in {"critical", "needs_action_today", "dangerous"}:
             self._notifier.dispatch(
                 Notification(
                     title="Important email",
-                    body=event.summary,
+                    body=f"{event.summary} — {why}" if why else event.summary,
                     category="email",
                 )
             )
