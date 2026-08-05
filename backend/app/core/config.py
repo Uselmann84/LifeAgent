@@ -8,12 +8,17 @@ accidentally pointing at a production database or enabling real side effects in 
 
 from __future__ import annotations
 
+import os
 from enum import Enum
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The env file is selectable via LIFE_AGENT_ENV_FILE (used by the launchd service to point at
+# config/.env, and by the test harness to point at a nonexistent file for full isolation).
+_ENV_FILE = os.environ.get("LIFE_AGENT_ENV_FILE", ".env")
 
 
 class Environment(str, Enum):
@@ -45,7 +50,7 @@ class ExecutionMode(str, Enum):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="LIFE_AGENT_",
-        env_file=(".env",),
+        env_file=(_ENV_FILE,),
         env_file_encoding="utf-8",
         extra="ignore",
     )

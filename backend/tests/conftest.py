@@ -15,8 +15,11 @@ _TMP_DB = os.path.join(tempfile.gettempdir(), "lifeagent_test.db")
 if os.path.exists(_TMP_DB):
     os.remove(_TMP_DB)
 
+# Isolate tests from any real `.env` on the host (e.g. a production Backend Mac config).
+os.environ["LIFE_AGENT_ENV_FILE"] = os.path.join(tempfile.gettempdir(), "lifeagent_no_env_file")
 os.environ["LIFE_AGENT_ENV"] = "testing"
 os.environ["LIFE_AGENT_MODE"] = "demo"
+os.environ["LIFE_AGENT_EXECUTION_MODE"] = "simulation"
 os.environ["LIFE_AGENT_LLM_PROVIDER"] = "mock"
 os.environ["LIFE_AGENT_DATABASE_URL"] = f"sqlite:///{_TMP_DB}"
 os.environ["LIFE_AGENT_DEV_API_TOKEN"] = "test-token"
