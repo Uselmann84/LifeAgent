@@ -38,6 +38,8 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# Import the in-tree `app` package without requiring an editable install.
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 120
