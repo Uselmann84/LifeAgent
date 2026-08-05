@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Life Agent backend launchd service (Backend MacBook Pro M3).
+
+  This is a TEMPLATE. install_backend.sh substitutes {{LA_PROD_HOME}} and
+  {{LA_VENV}} and writes the result to ~/Library/LaunchAgents/.
+
+  Manage:
+    launchctl load   ~/Library/LaunchAgents/com.lifeagent.backend.plist
+    launchctl start  com.lifeagent.backend
+    launchctl stop   com.lifeagent.backend
+    launchctl kickstart -k gui/$(id -u)/com.lifeagent.backend
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeagent.backend</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{LA_VENV}}/bin/python</string>
+    <string>-m</string>
+    <string>uvicorn</string>
+    <string>app.main:create_app</string>
+    <string>--factory</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+    <string>--port</string>
+    <string>8787</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{LA_PROD_HOME}}/current/backend</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LIFE_AGENT_ENVIRONMENT</key>
+    <string>production</string>
+    <key>LIFE_AGENT_ENV_FILE</key>
+    <string>{{LA_PROD_HOME}}/config/.env</string>
+    <key>PATH</key>
+    <string>{{LA_VENV}}/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- Restart on crash, but throttle to avoid tight crash loops. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <key>Crashed</key>
+    <true/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <!-- Start automatically at login/boot of the Backend Mac. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>{{LA_PROD_HOME}}/logs/backend.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{LA_PROD_HOME}}/logs/backend.err.log</string>
+</dict>
+</plist>

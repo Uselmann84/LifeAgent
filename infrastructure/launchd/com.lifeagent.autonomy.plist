@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Life Agent autonomous runtime launchd service (Backend MacBook Pro M3).
+
+  Runs the continuous background intelligence loop that supervises the six autonomous
+  components: agent_loop, email_monitor, llm_router, memory_manager, decision_engine,
+  notification_dispatcher (Section 35.9).
+
+  This is a TEMPLATE. install_backend.sh substitutes {{LA_PROD_HOME}} and {{LA_VENV}} and
+  writes the result to ~/Library/LaunchAgents/.
+
+  Manage:
+    launchctl load   ~/Library/LaunchAgents/com.lifeagent.autonomy.plist
+    launchctl start  com.lifeagent.autonomy
+    launchctl stop   com.lifeagent.autonomy          # graceful (SIGTERM handled)
+    launchctl kickstart -k gui/$(id -u)/com.lifeagent.autonomy
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lifeagent.autonomy</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{LA_VENV}}/bin/python</string>
+    <string>-m</string>
+    <string>app.autonomy.service</string>
+    <string>run</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{LA_PROD_HOME}}/current/backend</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LIFE_AGENT_ENVIRONMENT</key>
+    <string>production</string>
+    <!-- Autonomy runs real behavior only on the Backend Mac. -->
+    <key>LIFE_AGENT_EXECUTION_MODE</key>
+    <string>production</string>
+    <key>LIFE_AGENT_ENV_FILE</key>
+    <string>{{LA_PROD_HOME}}/config/.env</string>
+    <key>PATH</key>
+    <string>{{LA_VENV}}/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <!-- Restart on crash, throttled to avoid tight crash loops. -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <key>Crashed</key>
+    <true/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <!-- Auto-start on boot/login of the Backend Mac. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <!-- Give the loop time to finish the current tick on stop. -->
+  <key>ExitTimeOut</key>
+  <integer>20</integer>
+
+  <key>StandardOutPath</key>
+  <string>{{LA_PROD_HOME}}/logs/autonomy.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{LA_PROD_HOME}}/logs/autonomy.err.log</string>
+</dict>
+</plist>

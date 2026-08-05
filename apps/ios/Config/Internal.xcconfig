@@ -1,0 +1,13 @@
+// Internal — TestFlight/ad-hoc builds pointing at a development/staging backend.
+#include "Base.xcconfig"
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = INTERNAL
+SWIFT_OPTIMIZATION_LEVEL = -O
+
+PRODUCT_BUNDLE_IDENTIFIER = com.example.lifeagent.internal
+
+// Points at the Backend Mac over the private Tailscale network by default.
+// Replace the host with your Backend Mac's Tailnet name. Still non-production,
+// so the environment banner remains visible.
+LA_DEFAULT_BACKEND_URL = http:/$()/backend-mac.tailnet.ts.net:8787
+LA_DEFAULT_ENVIRONMENT = development

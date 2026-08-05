@@ -1,0 +1,15 @@
+// Release — production build. Talks to the Backend Mac over the private network.
+// Debug controls and the environment banner are hidden in production.
+#include "Base.xcconfig"
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS =
+SWIFT_OPTIMIZATION_LEVEL = -O
+GCC_OPTIMIZATION_LEVEL = s
+VALIDATE_PRODUCT = YES
+
+PRODUCT_BUNDLE_IDENTIFIER = com.example.lifeagent
+
+// The real backend URL is set at pairing time and stored per-profile; this is
+// only the first-launch default. Set it to your Backend Mac's private hostname.
+LA_DEFAULT_BACKEND_URL = https:/$()/backend-mac.tailnet.ts.net
+LA_DEFAULT_ENVIRONMENT = production

@@ -1,0 +1,12 @@
+// Debug — local development against a backend on this Mac (localhost) in Demo mode.
+#include "Base.xcconfig"
+
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG
+GCC_OPTIMIZATION_LEVEL = 0
+SWIFT_OPTIMIZATION_LEVEL = -Onone
+
+PRODUCT_BUNDLE_IDENTIFIER = com.example.lifeagent.debug
+
+// Default backend the app points at on first launch. Non-production only.
+LA_DEFAULT_BACKEND_URL = http:/$()/127.0.0.1:8787
+LA_DEFAULT_ENVIRONMENT = demo

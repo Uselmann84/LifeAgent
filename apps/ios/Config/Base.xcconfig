@@ -1,0 +1,18 @@
+// Shared base configuration for all build configurations.
+// NO SECRETS in xcconfig files — they are committed to source control.
+// Runtime secrets (device token) live only in the Keychain.
+
+PRODUCT_NAME = Life Agent
+PRODUCT_BUNDLE_IDENTIFIER = com.example.lifeagent
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+SWIFT_VERSION = 5.0
+TARGETED_DEVICE_FAMILY = 1,2
+ENABLE_USER_SCRIPT_SANDBOXING = YES
+
+// Info.plist keys sourced from these build settings.
+INFOPLIST_KEY_UILaunchScreen_Generation = YES
+INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES
+INFOPLIST_KEY_NSFaceIDUsageDescription = Life Agent uses Face ID to unlock the app and to authorize sensitive actions.

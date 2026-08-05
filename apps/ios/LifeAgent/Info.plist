@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Info.plist template for the Life Agent iOS app.
+  LA_DEFAULT_BACKEND_URL and LA_DEFAULT_ENVIRONMENT are injected from the active
+  .xcconfig at build time. No secrets are stored here.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+
+    <key>LA_DEFAULT_BACKEND_URL</key>
+    <string>$(LA_DEFAULT_BACKEND_URL)</string>
+    <key>LA_DEFAULT_ENVIRONMENT</key>
+    <string>$(LA_DEFAULT_ENVIRONMENT)</string>
+
+    <key>NSFaceIDUsageDescription</key>
+    <string>Life Agent uses Face ID to unlock the app and to authorize sensitive actions.</string>
+
+    <!--
+      App Transport Security: production uses HTTPS over the private network.
+      For local Debug builds against http://127.0.0.1, add a scoped exception in
+      the Debug configuration only; do not weaken ATS in Release.
+    -->
+</dict>
+</plist>
