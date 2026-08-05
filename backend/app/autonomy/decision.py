@@ -89,7 +89,21 @@ class DecisionEngine:
     def _on_email(self, event: Event) -> Decision:
         importance = event.payload.get("importance", "informational")
         why = (event.payload.get("why_it_matters") or "").strip()
-        if importance in {"critical", "needs_action_today", "dangerous"}:
+        if importance == "dangerous":
+            # Suspicious/phishing mail: flag it, never propose a reply.
+            self._notifier.dispatch(
+                Notification(
+                    title="Suspicious email",
+                    body=f"{event.summary} — {why}" if why else event.summary,
+                    category="email",
+                )
+            )
+            return Decision(
+                event_type=event.type,
+                disposition=Disposition.notified,
+                detail="Suspicious email flagged (dangerous) — do not reply.",
+            )
+        if importance in {"critical", "needs_action_today"}:
             self._notifier.dispatch(
                 Notification(
                     title="Important email",

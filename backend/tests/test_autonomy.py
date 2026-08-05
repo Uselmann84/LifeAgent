@@ -183,6 +183,22 @@ def test_decision_notifies_on_high_importance_email():
     assert decision.proposed_action == "prepare_reply_draft"
 
 
+def test_decision_flags_dangerous_email_without_reply():
+    with Session(engine) as session:
+        engine_ = _engine(session, sim_settings())
+        event = Event(
+            type=EventType.email_received,
+            source="email:sim",
+            summary="Verify your account now",
+            payload={"importance": "dangerous", "sender": "phish@evil.example"},
+        )
+        decision = engine_.decide(event)
+    assert decision.disposition is Disposition.notified
+    assert decision.proposed_action is None
+    assert not decision.requires_approval
+    assert "dangerous" in decision.detail.lower()
+
+
 def test_decision_notifies_on_due_task():
     with Session(engine) as session:
         engine_ = _engine(session, sim_settings())
