@@ -67,8 +67,9 @@ flowchart TB
     end
 
     subgraph External["External services (real only)"]
-        GMAIL[Gmail]
-        CAL[Calendar]
+        MAIL[mail.com<br/>IMAP/SMTP]
+        CAL[Apple Calendar<br/>iCloud CalDAV]
+        IMSG[iMessage<br/>Messages store]
     end
 
     APP <-->|paired HTTPS on LAN/Tailscale| SVC1
@@ -81,10 +82,12 @@ flowchart TB
     ROUTE --> LLM
     DEC -->|approval-gated| Boundary
     Boundary --> EFFECTS
-    EFFECTS --> GMAIL
+    EFFECTS --> MAIL
     EFFECTS --> CAL
-    GMAIL --> SRC
+    EFFECTS --> IMSG
+    MAIL --> SRC
     CAL --> SRC
+    IMSG --> SRC
     Runtime --> SEC
 
     style Boundary fill:#3a1f1f,stroke:#c0392b,color:#fff
@@ -105,7 +108,7 @@ All six run as supervised components of one launchd-managed process
 | Service | Source | Responsibility | Sim behavior | Prod behavior |
 |---|---|---|---|---|
 | `agent_loop` | [`runtime.py`](../backend/app/autonomy/runtime.py) | Continuous tick loop; supervises the rest | manual `tick()` | 30s loop, graceful SIGTERM |
-| `email_monitor` | [`sources.py`](../backend/app/autonomy/sources.py) | Poll inbound email → events | replays seeded rows | real Gmail (Phase 2) |
+| `email_monitor` | [`sources.py`](../backend/app/autonomy/sources.py) | Poll inbound email → events; download + understand attachments | replays seeded rows | real mail.com over IMAP |
 | `llm_router` | [`router.py`](../backend/app/autonomy/router.py) | Map task → model profile | `development-*` profiles | `production-*` local models |
 | `memory_manager` | [`memory.py`](../backend/app/autonomy/memory.py) | Long-term memory | ephemeral, resettable | persistent SQLite |
 | `decision_engine` | [`decision.py`](../backend/app/autonomy/decision.py) | Event → proposed action | identical logic | identical logic |

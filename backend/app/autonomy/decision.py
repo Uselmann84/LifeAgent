@@ -78,6 +78,7 @@ class DecisionEngine:
             EventType.calendar_updated: self._on_calendar,
             EventType.task_changed: self._on_task,
             EventType.user_message: self._on_user_message,
+            EventType.message_received: self._on_message,
             EventType.system: self._on_system,
         }.get(event.type)
         if handler is None:
@@ -131,6 +132,17 @@ class DecisionEngine:
             MemoryRecord(kind="interaction", content=event.summary, source=event.source)
         )
         return Decision(event.type, Disposition.remembered, "User message recorded.")
+
+    def _on_message(self, event: Event) -> Decision:
+        # Inbound iMessage/SMS: surface it proactively and remember it. Any reply is an external
+        # effect and only happens later through the approval-gated send_imessage tool.
+        self._notifier.dispatch(
+            Notification(title="New message", body=event.summary, category="imessage")
+        )
+        self._memory.remember(
+            MemoryRecord(kind="message", content=event.summary, source=event.source, confidence=0.6)
+        )
+        return Decision(event.type, Disposition.notified, "Inbound message surfaced.")
 
     def _on_system(self, event: Event) -> Decision:
         return Decision(event.type, Disposition.ignored, "System heartbeat.")

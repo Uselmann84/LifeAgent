@@ -66,6 +66,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
     "send_approved_email": ToolSpec(
         "send_approved_email", "Send an approved email", True, False, True, "controlled_action"
     ),
+    "request_imessage_send_approval": ToolSpec(
+        "request_imessage_send_approval", "Create iMessage send approval", False, True, True, "demo"
+    ),
+    "send_approved_imessage": ToolSpec(
+        "send_approved_imessage", "Send an approved iMessage", True, False, True, "controlled_action"
+    ),
     "move_email_to_spam": ToolSpec("move_email_to_spam", "Move email to spam", True, True, True, "controlled_action"),
 }
 
@@ -232,9 +238,120 @@ def send_approved_email(
 
     # Backend Mac, production execution, controlled-action mode, flag enabled.
     guard_side_effect(SideEffect.send_email)
-    # Phase 4 will call the email provider here with an idempotency key and record the provider
-    # message id before marking success.
-    raise ToolError("Real email sending is not implemented until Phase 4.")
+    from app.integrations.email.smtp import SmtpEmailSender
+
+    payload = approval.payload
+    result = SmtpEmailSender().send(
+        to=list(payload.get("to") or []),
+        subject=payload.get("subject", ""),
+        body=payload.get("body", ""),
+        cc=list(payload.get("cc") or []) or None,
+    )
+    audit.record_action(
+        session,
+        planned_action="send_approved_email",
+        tools_used=["send_approved_email"],
+        inputs={"to": payload.get("to")},
+        outputs={"dispatched": True, "message_id": result.message_id},
+        reasoning_summary="Approval valid; email dispatched via SMTP.",
+        approval_id=approval.id,
+        success=True,
+        reversible=False,
+    )
+    return {
+        "dispatched": True,
+        "message_id": result.message_id,
+        "approval_id": approval.id,
+    }
+
+
+def request_imessage_send_approval(
+    session: Session,
+    *,
+    to: str,
+    body: str,
+    reason: str,
+    recipient_trusted: bool = True,
+    autonomy_level: int | None = None,
+) -> ApprovalRequest:
+    """Create an approval request bound to the exact iMessage payload."""
+    settings = get_settings()
+    level = autonomy_level if autonomy_level is not None else settings.default_autonomy_level
+    payload = {"to": to, "body": body}
+    decision = policy.evaluate(
+        "send_approved_imessage",
+        autonomy_level=level,
+        payload=payload,
+        recipient_trusted=recipient_trusted,
+    )
+    approval = ApprovalRequest(
+        action_type="send_approved_imessage",
+        reason=reason,
+        data_affected=f"iMessage to {to}",
+        payload=payload,
+        payload_hash=policy.compute_payload_hash(payload),
+        risk_level=decision.risk_level,
+        status=ApprovalStatus.pending,
+        expires_at=policy.new_approval_ttl(),
+    )
+    session.add(approval)
+    session.commit()
+    session.refresh(approval)
+    audit.record_action(
+        session,
+        planned_action="request_imessage_send_approval",
+        tools_used=["request_imessage_send_approval"],
+        inputs={"to": to},
+        outputs={"approval_id": approval.id},
+        reasoning_summary="Prepared an iMessage send; awaiting explicit user approval.",
+        approval_id=approval.id,
+        success=True,
+    )
+    session.refresh(approval)  # audit commit expires the instance; reload before returning
+    return approval
+
+
+def send_approved_imessage(
+    session: Session, *, approval: ApprovalRequest, submitted_payload_hash: str
+) -> dict[str, Any]:
+    """Send an iMessage ONLY with a valid, unexpired, payload-matched approval.
+
+    Real sending crosses the execution boundary (Section 35.8): refused entirely outside a fully
+    authorized Backend Mac. In simulation the intent is recorded with no external effect.
+    """
+    policy.validate_approval(approval, submitted_payload_hash)
+
+    if simulate_or_block(SideEffect.send_imessage):
+        audit.record_action(
+            session,
+            planned_action="send_approved_imessage",
+            tools_used=["send_approved_imessage"],
+            inputs={"to": approval.payload.get("to")},
+            outputs={"dispatched": False, "reason": "simulated (execution boundary)"},
+            reasoning_summary="Approval valid, but real sending is not permitted in this mode.",
+            approval_id=approval.id,
+            success=None,
+            reversible=False,
+        )
+        return {"dispatched": False, "reason": "simulated", "approval_id": approval.id}
+
+    guard_side_effect(SideEffect.send_imessage)
+    from app.integrations.imessage import IMessageSender
+
+    payload = approval.payload
+    IMessageSender().send(to=payload.get("to", ""), body=payload.get("body", ""))
+    audit.record_action(
+        session,
+        planned_action="send_approved_imessage",
+        tools_used=["send_approved_imessage"],
+        inputs={"to": payload.get("to")},
+        outputs={"dispatched": True},
+        reasoning_summary="Approval valid; iMessage dispatched via Messages.",
+        approval_id=approval.id,
+        success=True,
+        reversible=False,
+    )
+    return {"dispatched": True, "approval_id": approval.id}
 
 
 def move_email_to_spam(session: Session, *, message_id: str) -> dict[str, Any]:

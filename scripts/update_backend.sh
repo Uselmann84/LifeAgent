@@ -42,7 +42,7 @@ launchctl stop "${LA_LAUNCHD_LABEL}" 2>/dev/null || true
 section "Installing deps + migrating"
 # shellcheck disable=SC1091
 source "${VENV}/bin/activate"
-python -m pip install --quiet "${RELEASE_DIR}/backend" || die "dependency install failed"
+python -m pip install --quiet "${RELEASE_DIR}/backend[integrations,documents]" || die "dependency install failed"
 ( cd "${RELEASE_DIR}/backend" && \
   LIFE_AGENT_ENV_FILE="${ENV_FILE}" python -c "from app.core.db import run_migrations; run_migrations()" ) \
   || die "migration failed (data backed up; not yet activated)"

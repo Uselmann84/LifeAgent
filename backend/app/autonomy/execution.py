@@ -26,6 +26,7 @@ class SideEffect(str, Enum):
     move_email = "move_email"
     call_webhook = "call_webhook"
     sync_email = "sync_email"
+    send_imessage = "send_imessage"
 
 
 class SideEffectBlocked(RuntimeError):
@@ -41,6 +42,7 @@ _REQUIRED_FLAG: dict[SideEffect, str] = {
     SideEffect.create_reminder: "feature_real_calendar_write",
     SideEffect.send_notification: "notifications_enabled",
     SideEffect.call_webhook: "feature_real_calendar_write",
+    SideEffect.send_imessage: "feature_real_imessage_send",
 }
 
 

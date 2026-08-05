@@ -24,6 +24,7 @@ class EventType(str, Enum):
     calendar_updated = "calendar_updated"
     task_changed = "task_changed"
     user_message = "user_message"
+    message_received = "message_received"  # inbound iMessage/SMS
     system = "system"
 
 

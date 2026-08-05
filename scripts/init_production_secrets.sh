@@ -23,9 +23,8 @@ echo
 # key -> human description
 SECRET_KEYS=(
   "api_token:Production API bearer token (iPhone <-> backend auth)"
-  "gmail_oauth_client_id:Gmail OAuth client id"
-  "gmail_oauth_client_secret:Gmail OAuth client secret"
-  "gmail_refresh_token:Gmail OAuth refresh token"
+  "email_password:mail.com email/app password (IMAP + SMTP)"
+  "apple_app_password:Apple ID app-specific password (iCloud Calendar / CalDAV)"
   "remote_ai_api_key:Optional remote AI provider key (leave blank to skip)"
 )
 

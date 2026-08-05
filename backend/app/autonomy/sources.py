@@ -1,12 +1,20 @@
 """Concrete event sources with production and simulation variants (Section 35.5).
 
-Production variants integrate real APIs and only function on the Backend Mac; until their phase
-lands they raise clearly. Simulation variants generate deterministic, replayable events and never
-touch real accounts, the production database, or external systems.
+Production variants integrate the user's real accounts and only function on the Backend Mac:
+
+* email    → mail.com over IMAP (``app.integrations.email.imap``), with attachments downloaded and
+  understood by the document pipeline (``app.documents.pipeline``),
+* calendar → Apple Calendar / iCloud over CalDAV (``app.integrations.calendar.icloud``),
+* messages → iMessage from the local Messages store (``app.integrations.imessage``).
+
+Each production source is additionally gated by its feature flag and fails soft (returns no events)
+when the integration is disabled or unavailable, so the loop never crashes. Simulation variants
+generate deterministic, replayable events and never touch real accounts or external systems.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from sqlmodel import Session, select
@@ -15,13 +23,15 @@ from app.autonomy.events import Event, EventSource, EventType
 from app.core.config import Settings
 from app.core.models import EmailMessage, Task, TaskStatus, utcnow
 
-# --------------------------------------------------------------------------- Gmail
+logger = logging.getLogger("lifeagent.autonomy.sources")
+
+# --------------------------------------------------------------------------- Email
 
 
-class SimulatedGmailEventSource:
-    """Replays seeded EmailMessage rows as inbound email events. Never touches real Gmail."""
+class SimulatedEmailEventSource:
+    """Replays seeded EmailMessage rows as inbound email events. Never touches a real mailbox."""
 
-    name = "gmail:sim"
+    name = "email:sim"
     is_simulation = True
 
     def __init__(self, session: Session) -> None:
@@ -47,6 +57,7 @@ class SimulatedGmailEventSource:
                         "importance": m.importance.value,
                         # Body is untrusted external content.
                         "body": m.body,
+                        "attachments": [],
                     },
                     untrusted=True,
                 )
@@ -56,19 +67,74 @@ class SimulatedGmailEventSource:
         return events
 
 
-class ProductionGmailEventSource:
-    """Real Gmail integration (Backend Mac only). Implemented in Phase 2."""
+class ProductionImapEmailEventSource:
+    """Real mail.com/IMAP inbox (Backend Mac only), with attachment understanding."""
 
-    name = "gmail"
+    name = "email"
     is_simulation = False
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._seen: set[str] = set()
 
     def poll(self, limit: int) -> list[Event]:
-        raise NotImplementedError(
-            "Production Gmail integration lands in Phase 2 (OAuth on the Backend Mac)."
-        )
+        # Lazy imports keep the base app free of integration internals.
+        from app.core.config import get_settings
+        from app.documents.pipeline import DocumentProcessor
+        from app.integrations.email.imap import EmailSyncDisabled, ImapEmailClient
+
+        client = ImapEmailClient()
+        try:
+            fetched = client.fetch_recent(limit=limit)
+        except EmailSyncDisabled as exc:
+            logger.info("email source disabled: %s", exc)
+            return []
+        except Exception:  # pragma: no cover - provider/network errors must not crash the loop
+            logger.exception("IMAP fetch failed")
+            return []
+
+        process_docs = get_settings().feature_process_documents
+        processor = DocumentProcessor(self._session)
+        events: list[Event] = []
+        for msg in fetched:
+            if msg.uid in self._seen:
+                continue
+            self._seen.add(msg.uid)
+            attachments = []
+            if process_docs:
+                for att in msg.attachments:
+                    try:
+                        analysis = processor.analyze(
+                            att.data, att.filename, att.content_type, source=f"email:{msg.uid}"
+                        )
+                        attachments.append(
+                            {
+                                "filename": analysis.filename,
+                                "doc_type": analysis.doc_type,
+                                "summary": analysis.summary,
+                                "needs_vision": analysis.needs_vision,
+                                "document_id": analysis.stored_document_id,
+                            }
+                        )
+                    except Exception:  # pragma: no cover
+                        logger.exception("attachment processing failed: %s", att.filename)
+            events.append(
+                Event(
+                    type=EventType.email_received,
+                    source=self.name,
+                    summary=f"Email from {msg.sender}: {msg.subject}",
+                    payload={
+                        "email_id": msg.uid,
+                        "sender": msg.sender,
+                        "subject": msg.subject,
+                        # Body and attachment text are untrusted external content.
+                        "body": msg.body,
+                        "attachments": attachments,
+                    },
+                    untrusted=True,
+                )
+            )
+        return events
 
 
 # --------------------------------------------------------------------------- Calendar
@@ -99,17 +165,50 @@ class SimulatedCalendarEventSource:
         ][:limit]
 
 
-class ProductionCalendarEventSource:
-    """Real EventKit/CalDAV integration (Backend Mac only). Implemented in Phase 3."""
+class ProductionICloudCalendarEventSource:
+    """Real Apple Calendar (iCloud/CalDAV) upcoming events (Backend Mac only)."""
 
     name = "calendar"
     is_simulation = False
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self._seen: set[str] = set()
 
     def poll(self, limit: int) -> list[Event]:
-        raise NotImplementedError("Production calendar integration lands in Phase 3.")
+        from app.integrations.calendar.icloud import CalendarDisabled, ICloudCalendarClient
+
+        client = ICloudCalendarClient()
+        try:
+            upcoming = client.upcoming(days=7)
+        except CalendarDisabled as exc:
+            logger.info("calendar source disabled: %s", exc)
+            return []
+        except Exception:  # pragma: no cover
+            logger.exception("CalDAV fetch failed")
+            return []
+
+        events: list[Event] = []
+        for ev in upcoming:
+            if ev.uid in self._seen:
+                continue
+            self._seen.add(ev.uid)
+            events.append(
+                Event(
+                    type=EventType.calendar_updated,
+                    source=self.name,
+                    summary=f"Upcoming: {ev.title}",
+                    payload={
+                        "uid": ev.uid,
+                        "title": ev.title,
+                        "starts_at": ev.start.isoformat(),
+                        "location": ev.location,
+                    },
+                )
+            )
+            if len(events) >= limit:
+                break
+        return events
 
 
 # --------------------------------------------------------------------------- Tasks
@@ -149,6 +248,77 @@ class TaskEventSource:
                 )
             if len(events) >= limit:
                 break
+        return events
+
+
+# --------------------------------------------------------------------------- iMessage
+
+
+class SimulatedIMessageEventSource:
+    """Injectable queue of simulated inbound iMessages for testing proactive behavior."""
+
+    name = "imessage:sim"
+    is_simulation = True
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self._queue: list[tuple[str, str]] = []
+
+    def enqueue(self, handle: str, text: str) -> None:
+        self._queue.append((handle, text))
+
+    def poll(self, limit: int) -> list[Event]:
+        events = [
+            Event(
+                type=EventType.message_received,
+                source=self.name,
+                summary=f"iMessage from {handle}",
+                payload={"handle": handle, "text": text},
+                untrusted=True,
+            )
+            for handle, text in self._queue[:limit]
+        ]
+        self._queue = self._queue[limit:]
+        return events
+
+
+class ProductionIMessageEventSource:
+    """Real inbound iMessages from the local Messages store (Backend Mac only)."""
+
+    name = "imessage"
+    is_simulation = False
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+        self._seen: set[int] = set()
+
+    def poll(self, limit: int) -> list[Event]:
+        from app.integrations.imessage import IMessageDisabled, IMessageReader
+
+        reader = IMessageReader()
+        try:
+            recent = reader.recent(limit=limit)
+        except IMessageDisabled as exc:
+            logger.info("imessage source disabled: %s", exc)
+            return []
+        except Exception:  # pragma: no cover
+            logger.exception("iMessage read failed")
+            return []
+
+        events: list[Event] = []
+        for rec in recent:
+            if rec.rowid in self._seen or rec.is_from_me or not rec.text:
+                continue
+            self._seen.add(rec.rowid)
+            events.append(
+                Event(
+                    type=EventType.message_received,
+                    source=self.name,
+                    summary=f"iMessage from {rec.handle}",
+                    payload={"handle": rec.handle, "text": rec.text},
+                    untrusted=True,
+                )
+            )
         return events
 
 
@@ -226,19 +396,20 @@ class SystemEventSource:
 
 def build_event_sources(session: Session, settings: Settings) -> list[EventSource]:
     """Assemble the event sources appropriate for the current execution mode."""
-    sim = settings.is_simulation
-    if sim:
+    if settings.is_simulation:
         return [
-            SimulatedGmailEventSource(session),
+            SimulatedEmailEventSource(session),
             SimulatedCalendarEventSource(session),
             TaskEventSource(session, is_simulation=True),
+            SimulatedIMessageEventSource(session),
             SimulatedUserMessageEventSource(session),
             SystemEventSource(is_simulation=True),
         ]
     return [
-        ProductionGmailEventSource(session),
-        ProductionCalendarEventSource(session),
+        ProductionImapEmailEventSource(session),
+        ProductionICloudCalendarEventSource(session),
         TaskEventSource(session, is_simulation=False),
+        ProductionIMessageEventSource(session),
         ProductionUserMessageEventSource(session),
         SystemEventSource(is_simulation=False),
     ]

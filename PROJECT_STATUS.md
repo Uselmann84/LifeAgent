@@ -58,7 +58,9 @@ _Last updated: Phase 0 + Phase 1 vertical slice._
 |------|--------|-------|
 | Execution reality boundary (`simulation`/`production`) | ✅ | `LIFE_AGENT_EXECUTION_MODE` + cross-guardrails; illegal combos rejected |
 | Single side-effect chokepoint | ✅ | `app/autonomy/execution.py` (`guard_side_effect`/`simulate_or_block`); wired into agent tools |
-| Event sources (sim + prod variants) | ✅ | Gmail, calendar, tasks, user, system; prod sources raise until their phase lands |
+| Event sources (sim + prod variants) | ✅ | email (mail.com/IMAP), calendar (iCloud/CalDAV), tasks, iMessage, user, system; prod sources fail soft when disabled |
+| Real integrations (Backend Mac) | ✅ | IMAP read + SMTP send (mail.com), iCloud CalDAV read/write, iMessage read + send; all approval- and flag-gated |
+| Document understanding | ✅ | Email attachments (PDF/Word/images) downloaded → text extracted → summarized/classified → stored as `Document` |
 | Environment-aware LLM router | ✅ | `production-*` local profiles vs `development-*` in simulation |
 | Memory manager (prod vs sim) | ✅ | Persistent SQLite on Backend Mac; ephemeral/resettable in simulation |
 | Decision engine | ✅ | Event → proposed action; injection-flagging; approval-gated, never auto-executes |
@@ -71,11 +73,11 @@ _Last updated: Phase 0 + Phase 1 vertical slice._
 | Autonomous architecture docs | ✅ | `docs/AUTONOMOUS_ARCHITECTURE.md` (production diagram + service map) |
 
 ## Prioritized backlog (next)
-1. Phase 2 — Gmail read-only integration (OAuth on Backend Mac, thread summaries, importance classification).
+1. Backend Mac credential setup (Keychain: mail.com app password, Apple ID app-specific password) + first live sync.
 2. First-deployment independence test on the Backend Mac (install → run without Dev Mac).
 3. Real secure pairing (X25519 device keys, QR flow, certificate pinning).
 4. Phase 3 — EventKit, Share Extension, App Intents, Widgets in iOS app.
-5. Document processing + OCR (Phase 5).
+5. Multimodal/vision model for scanned PDFs and image attachments (local OCR).
 
 ## Known assumptions / limitations
 - Single primary user, US jurisdiction, `America/Los_Angeles`, English UI (localization-ready).

@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     feature_real_email_sync: bool = False
     feature_real_calendar_write: bool = False
     feature_move_email_to_spam: bool = False
+    feature_real_imessage_read: bool = False
+    feature_real_imessage_send: bool = False
+    # Download + analyze email attachments (PDF/Word/images). Read-only, but touches network + disk.
+    feature_process_documents: bool = False
     feature_remote_ai_fallback: bool = False
 
     # LLM routing
@@ -100,9 +104,27 @@ class Settings(BaseSettings):
     dev_api_token: str = "dev-only-change-me"
     master_key: str = "dev-only-not-secret"
 
-    # Integrations (mock by default)
-    gmail_client_id: str = ""
-    gmail_client_secret: str = ""
+    # --- Email (IMAP/SMTP) — provider-agnostic; defaults target mail.com --------------
+    # The account is anton.uselmann@mail.com in production; the password is injected from the
+    # macOS Keychain on the Backend Mac and never stored in Git.
+    email_address: str = ""
+    imap_host: str = "imap.mail.com"
+    imap_port: int = 993
+    smtp_host: str = "smtp.mail.com"
+    smtp_port: int = 587
+    email_password: str = ""
+    email_mailbox: str = "INBOX"
+
+    # --- Apple Calendar (iCloud CalDAV) ------------------------------------------------
+    caldav_url: str = "https://caldav.icloud.com"
+    apple_id: str = ""
+    apple_app_password: str = ""  # app-specific password from appleid.apple.com
+    icloud_calendar_name: str = ""  # empty = default calendar
+
+    # --- iMessage (Backend Mac only; unofficial, best-effort) --------------------------
+    # Read from the local Messages SQLite store; send by driving Messages via AppleScript.
+    # Requires Full Disk Access and a signed-in iMessage account on the Backend Mac.
+    imessage_db_path: str = "~/Library/Messages/chat.db"
 
     @field_validator("default_autonomy_level")
     @classmethod

@@ -53,8 +53,9 @@ fi
 source "${VENV}/bin/activate"
 python -m pip install --quiet --upgrade pip
 if [[ -f "${RELEASE_DIR}/backend/pyproject.toml" ]]; then
-  python -m pip install --quiet "${RELEASE_DIR}/backend"
-  ok "installed backend package"
+  # Include real-integration + document-understanding extras (mail.com/iCloud/PDF/Word).
+  python -m pip install --quiet "${RELEASE_DIR}/backend[integrations,documents]"
+  ok "installed backend package (with integrations + documents)"
 else
   die "pyproject.toml missing in release"
 fi

@@ -47,6 +47,7 @@ CONSEQUENTIAL_ACTIONS: frozenset[str] = frozenset(
 EXTERNAL_ACTIONS: frozenset[str] = frozenset(
     {
         "send_approved_email",
+        "send_approved_imessage",
         "save_approved_calendar_event",
         "create_reminder",
         "move_email_to_spam",
@@ -59,6 +60,7 @@ EXTERNAL_ACTIONS: frozenset[str] = frozenset(
 IRREVERSIBLE_ACTIONS: frozenset[str] = frozenset(
     {
         "send_approved_email",
+        "send_approved_imessage",
         "send_sensitive_email",
         "file_taxes",
         "submit_government_form",
