@@ -26,22 +26,28 @@ def test_normalize_falls_back_to_informational():
 
 
 def test_parse_handles_json_and_bare_label():
-    assert _parse('{"importance": "critical", "why": "wire transfer"}') == ("critical", "wire transfer")
-    assert _parse("promotion") == ("promotion", "")
-    assert _parse("") == ("", "")
+    assert _parse('{"importance": "critical", "why": "wire transfer"}')["importance"] == "critical"
+    assert _parse("promotion") == {"importance": "promotion"}
+    assert _parse("") == {}
+
+
+def test_parse_extracts_prose_wrapped_json():
+    raw = 'Here is the result: {"importance": "needs_action_today", "calendar": null} done.'
+    assert _parse(raw)["importance"] == "needs_action_today"
 
 
 def test_classify_email_importance_with_mock_provider():
     router = get_router(get_settings())
-    category, why = classify_email_importance(
+    triage = classify_email_importance(
         router,
         sender="boss@example.com",
         subject="Please review",
         body="Can you take a look at the attached contract?",
     )
     # Mock provider deterministically returns "informational" for classification.
-    assert category is ImportanceCategory.informational
-    assert why == ""
+    assert triage.importance is ImportanceCategory.informational
+    assert triage.why == ""
+    assert triage.calendar is None
 
 
 def test_ollama_profile_resolves_to_configured_models():

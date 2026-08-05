@@ -79,7 +79,7 @@ class ProductionImapEmailEventSource:
 
     def poll(self, limit: int) -> list[Event]:
         # Lazy imports keep the base app free of integration internals.
-        from app.agent.importance import classify_email_importance
+        from app.agent.importance import EmailTriage, classify_email_importance
         from app.autonomy.router import get_router
         from app.core.config import get_settings
         from app.documents.pipeline import DocumentProcessor
@@ -127,7 +127,7 @@ class ProductionImapEmailEventSource:
                 f"{a['filename']}: {a['summary']}" for a in attachments if a.get("summary")
             )
             try:
-                importance, why = classify_email_importance(
+                triage = classify_email_importance(
                     router,
                     sender=msg.sender,
                     subject=msg.subject,
@@ -136,23 +136,30 @@ class ProductionImapEmailEventSource:
                 )
             except Exception:  # pragma: no cover - classifier/model errors must not crash the loop
                 logger.exception("importance classification failed: %s", msg.uid)
-                importance, why = ImportanceCategory.informational, ""
+                triage = EmailTriage(ImportanceCategory.informational, "")
 
+            payload = {
+                "email_id": msg.uid,
+                "sender": msg.sender,
+                "subject": msg.subject,
+                "importance": triage.importance.value,
+                "why_it_matters": triage.why,
+                # Body and attachment text are untrusted external content.
+                "body": msg.body,
+                "attachments": attachments,
+            }
+            if triage.calendar is not None:
+                payload["calendar_suggestion"] = {
+                    "title": triage.calendar.title,
+                    "start": triage.calendar.start,
+                    "end": triage.calendar.end,
+                }
             events.append(
                 Event(
                     type=EventType.email_received,
                     source=self.name,
                     summary=f"Email from {msg.sender}: {msg.subject}",
-                    payload={
-                        "email_id": msg.uid,
-                        "sender": msg.sender,
-                        "subject": msg.subject,
-                        "importance": importance.value,
-                        "why_it_matters": why,
-                        # Body and attachment text are untrusted external content.
-                        "body": msg.body,
-                        "attachments": attachments,
-                    },
+                    payload=payload,
                     untrusted=True,
                 )
             )

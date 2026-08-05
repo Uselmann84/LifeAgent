@@ -199,6 +199,30 @@ def test_decision_flags_dangerous_email_without_reply():
     assert "dangerous" in decision.detail.lower()
 
 
+def test_decision_proposes_calendar_block_for_dated_email():
+    with Session(engine) as session:
+        engine_ = _engine(session, sim_settings())
+        event = Event(
+            type=EventType.email_received,
+            source="email:sim",
+            summary="Check in for your flight",
+            payload={
+                "importance": "needs_action_today",
+                "sender": "airline@example.com",
+                "calendar_suggestion": {
+                    "title": "Flight check-in",
+                    "start": "2026-08-10T09:00:00",
+                    "end": None,
+                },
+            },
+        )
+        decision = engine_.decide(event)
+    assert decision.disposition is Disposition.approval_requested
+    assert decision.proposed_action == "save_approved_calendar_event"
+    assert decision.requires_approval
+    assert decision.proposed_action_payload["title"] == "Flight check-in"
+
+
 def test_decision_notifies_on_due_task():
     with Session(engine) as session:
         engine_ = _engine(session, sim_settings())

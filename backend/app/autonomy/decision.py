@@ -36,6 +36,7 @@ class Decision:
     proposed_action: str | None = None
     requires_approval: bool = False
     security_warnings: list[str] = field(default_factory=list)
+    proposed_action_payload: dict | None = None
 
 
 class DecisionEngine:
@@ -102,6 +103,32 @@ class DecisionEngine:
                 event_type=event.type,
                 disposition=Disposition.notified,
                 detail="Suspicious email flagged (dangerous) — do not reply.",
+            )
+        calendar = event.payload.get("calendar_suggestion")
+        if isinstance(calendar, dict) and calendar.get("start"):
+            # The email implies a dated commitment (e.g. flight check-in) → propose a calendar block.
+            title = calendar.get("title") or "Calendar block"
+            self._notifier.dispatch(
+                Notification(
+                    title="Add to calendar?",
+                    body=f"{title} — {why}" if why else title,
+                    category="calendar",
+                )
+            )
+            # Details came from untrusted email, so writing the event always requires approval.
+            decision = policy.evaluate(
+                "save_approved_calendar_event",
+                autonomy_level=self._settings.default_autonomy_level,
+                payload=calendar,
+                value_from_untrusted_only=True,
+            )
+            return Decision(
+                event_type=event.type,
+                disposition=Disposition.approval_requested,
+                detail=f"Proposed calendar block: {title} at {calendar.get('start')}.",
+                proposed_action="save_approved_calendar_event",
+                requires_approval=decision.requires_approval,
+                proposed_action_payload=calendar,
             )
         if importance in {"critical", "needs_action_today"}:
             self._notifier.dispatch(
