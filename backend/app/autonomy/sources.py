@@ -80,6 +80,7 @@ class ProductionImapEmailEventSource:
     def poll(self, limit: int) -> list[Event]:
         # Lazy imports keep the base app free of integration internals.
         from app.agent.importance import EmailTriage, classify_email_importance
+        from app.autonomy.classification_cache import ClassificationCache
         from app.autonomy.router import get_router
         from app.core.config import get_settings
         from app.documents.pipeline import DocumentProcessor
@@ -99,6 +100,7 @@ class ProductionImapEmailEventSource:
         process_docs = settings.feature_process_documents
         processor = DocumentProcessor(self._session, settings)
         router = get_router(settings)
+        cache = ClassificationCache(settings.data_dir / "classification_cache.json")
         events: list[Event] = []
         for msg in fetched:
             if msg.uid in self._seen:
@@ -126,17 +128,21 @@ class ProductionImapEmailEventSource:
             attachment_note = "; ".join(
                 f"{a['filename']}: {a['summary']}" for a in attachments if a.get("summary")
             )
-            try:
-                triage = classify_email_importance(
-                    router,
-                    sender=msg.sender,
-                    subject=msg.subject,
-                    body=msg.body,
-                    attachment_note=attachment_note,
-                )
-            except Exception:  # pragma: no cover - classifier/model errors must not crash the loop
-                logger.exception("importance classification failed: %s", msg.uid)
-                triage = EmailTriage(ImportanceCategory.informational, "")
+            triage = cache.get(msg.uid)
+            if triage is None:
+                # Only cache successful classifications, so a transient failure retries next tick.
+                try:
+                    triage = classify_email_importance(
+                        router,
+                        sender=msg.sender,
+                        subject=msg.subject,
+                        body=msg.body,
+                        attachment_note=attachment_note,
+                    )
+                    cache.put(msg.uid, triage)
+                except Exception:  # pragma: no cover - model errors must not crash the loop
+                    logger.exception("importance classification failed: %s", msg.uid)
+                    triage = EmailTriage(ImportanceCategory.informational, "")
 
             payload = {
                 "email_id": msg.uid,

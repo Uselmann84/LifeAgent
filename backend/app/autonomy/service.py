@@ -56,6 +56,8 @@ def _configure_logging() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    # Per-request HTTP client noise (one line per model call) is not useful at INFO.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def preflight() -> int:
