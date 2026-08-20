@@ -20,6 +20,7 @@ from datetime import timedelta
 from sqlmodel import Session, select
 
 from app.autonomy.events import Event, EventSource, EventType
+from app.autonomy.seen_store import SeenStore
 from app.core.config import Settings
 from app.core.models import EmailMessage, ImportanceCategory, Task, TaskStatus, utcnow
 
@@ -73,9 +74,9 @@ class ProductionImapEmailEventSource:
     name = "email"
     is_simulation = False
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, seen: SeenStore | None = None) -> None:
         self._session = session
-        self._seen: set[str] = set()
+        self._seen = seen or SeenStore()
 
     def poll(self, limit: int) -> list[Event]:
         # Lazy imports keep the base app free of integration internals.
@@ -103,9 +104,9 @@ class ProductionImapEmailEventSource:
         cache = ClassificationCache(settings.data_dir / "classification_cache.json")
         events: list[Event] = []
         for msg in fetched:
-            if msg.uid in self._seen:
+            if self._seen.seen(self.name, msg.uid):
                 continue
-            self._seen.add(msg.uid)
+            self._seen.add(self.name, msg.uid)
             attachments = []
             if process_docs:
                 for att in msg.attachments:
@@ -206,9 +207,9 @@ class ProductionICloudCalendarEventSource:
     name = "calendar"
     is_simulation = False
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, seen: SeenStore | None = None) -> None:
         self._session = session
-        self._seen: set[str] = set()
+        self._seen = seen or SeenStore()
 
     def poll(self, limit: int) -> list[Event]:
         from app.integrations.calendar.icloud import CalendarDisabled, ICloudCalendarClient
@@ -225,9 +226,9 @@ class ProductionICloudCalendarEventSource:
 
         events: list[Event] = []
         for ev in upcoming:
-            if ev.uid in self._seen:
+            if self._seen.seen(self.name, ev.uid):
                 continue
-            self._seen.add(ev.uid)
+            self._seen.add(self.name, ev.uid)
             events.append(
                 Event(
                     type=EventType.calendar_updated,
@@ -258,21 +259,21 @@ class TaskEventSource:
 
     name = "tasks"
 
-    def __init__(self, session: Session, *, is_simulation: bool) -> None:
+    def __init__(self, session: Session, *, is_simulation: bool, seen: SeenStore | None = None) -> None:
         self._session = session
         self.is_simulation = is_simulation
-        self._seen: set[str] = set()
+        self._seen = seen or SeenStore()
 
     def poll(self, limit: int) -> list[Event]:
         now = utcnow()
         stmt = select(Task).where(Task.status != TaskStatus.done)
         events: list[Event] = []
         for t in self._session.exec(stmt).all():
-            if t.due_at is None or t.id in self._seen:
+            if t.due_at is None or self._seen.seen(self.name, t.id):
                 continue
             due = t.due_at if t.due_at.tzinfo else t.due_at.replace(tzinfo=now.tzinfo)
             if due <= now:
-                self._seen.add(t.id)
+                self._seen.add(self.name, t.id)
                 events.append(
                     Event(
                         type=EventType.task_changed,
@@ -323,9 +324,9 @@ class ProductionIMessageEventSource:
     name = "imessage"
     is_simulation = False
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, seen: SeenStore | None = None) -> None:
         self._session = session
-        self._seen: set[int] = set()
+        self._seen = seen or SeenStore()
 
     def poll(self, limit: int) -> list[Event]:
         from app.integrations.imessage import IMessageDisabled, IMessageReader
@@ -342,9 +343,9 @@ class ProductionIMessageEventSource:
 
         events: list[Event] = []
         for rec in recent:
-            if rec.rowid in self._seen or rec.is_from_me or not rec.text:
+            if self._seen.seen(self.name, rec.rowid) or rec.is_from_me or not rec.text:
                 continue
-            self._seen.add(rec.rowid)
+            self._seen.add(self.name, rec.rowid)
             events.append(
                 Event(
                     type=EventType.message_received,
@@ -440,11 +441,13 @@ def build_event_sources(session: Session, settings: Settings) -> list[EventSourc
             SimulatedUserMessageEventSource(session),
             SystemEventSource(is_simulation=True),
         ]
+    # One file-backed store, shared across sources, so dedup survives ticks and launchd restarts.
+    seen = SeenStore(settings.data_dir / "seen_events.json")
     return [
-        ProductionImapEmailEventSource(session),
-        ProductionICloudCalendarEventSource(session),
-        TaskEventSource(session, is_simulation=False),
-        ProductionIMessageEventSource(session),
+        ProductionImapEmailEventSource(session, seen),
+        ProductionICloudCalendarEventSource(session, seen),
+        TaskEventSource(session, is_simulation=False, seen=seen),
+        ProductionIMessageEventSource(session, seen),
         ProductionUserMessageEventSource(session),
         SystemEventSource(is_simulation=False),
     ]
