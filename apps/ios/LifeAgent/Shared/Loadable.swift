@@ -15,10 +15,13 @@ final class Loader<Value>: ObservableObject {
     @Published var state: Loadable<Value> = .idle
 
     func load(fetch: @escaping () async throws -> Value) async {
-        state = .loading
+        // Keep showing existing data during a reload; swapping to .loading tears down
+        // the List that hosts .refreshable, which cancels the in-flight request (-999).
+        if case .loaded = state {} else { state = .loading }
         do {
             state = .loaded(try await fetch())
         } catch {
+            if Task.isCancelled { return }
             state = .failed(error.localizedDescription)
         }
     }

@@ -15,10 +15,7 @@ struct AgentView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
                         ForEach(turns) { turn in
-                            AgentTurnView(turn: turn,
-                                          onApprove: approve,
-                                          onReject: reject,
-                                          onRevise: revise)
+                            AgentTurnView(turn: turn)
                             .id(turn.id)
                         }
                         if sending { ProgressView().padding() }
@@ -69,33 +66,6 @@ struct AgentView: View {
             turns.append(AgentTurn(role: .agent, response: failure))
         }
     }
-
-    private func approve(_ approval: ApprovalRequest) {
-        Task { _ = try? await appState.client.approve(approval); replaceApproval(approval, status: "approved") }
-    }
-
-    private func reject(_ approval: ApprovalRequest) {
-        Task { _ = try? await appState.client.reject(approval, reason: nil); replaceApproval(approval, status: "rejected") }
-    }
-
-    private func revise(_ approval: ApprovalRequest, _ instructions: String) {
-        Task { _ = try? await appState.client.revise(approval, instructions: instructions) }
-    }
-
-    private func replaceApproval(_ approval: ApprovalRequest, status: String) {
-        // Remove resolved approvals from the visible cards.
-        turns = turns.map { turn in
-            guard var resp = turn.response else { return turn }
-            resp = AgentResponse(
-                rationale: resp.rationale, found: resp.found,
-                recommendations: resp.recommendations, prepared: resp.prepared,
-                requiresApproval: resp.requiresApproval.filter { $0.id != approval.id },
-                completed: resp.completed, unverified: resp.unverified,
-                securityWarnings: resp.securityWarnings
-            )
-            var copy = turn; copy.response = resp; return copy
-        }
-    }
 }
 
 struct AgentTurn: Identifiable {
@@ -111,9 +81,6 @@ struct AgentTurn: Identifiable {
 
 struct AgentTurnView: View {
     let turn: AgentTurn
-    var onApprove: (ApprovalRequest) -> Void
-    var onReject: (ApprovalRequest) -> Void
-    var onRevise: (ApprovalRequest, String) -> Void
 
     var body: some View {
         if turn.role == .user {
@@ -135,13 +102,7 @@ struct AgentTurnView: View {
                 if !r.securityWarnings.isEmpty {
                     section("Security warnings", r.securityWarnings, "exclamationmark.shield", .red)
                 }
-                if !r.requiresApproval.isEmpty {
-                    Text("Requires approval").font(.caption.weight(.bold)).foregroundStyle(.secondary)
-                    ForEach(r.requiresApproval) { approval in
-                        ApprovalCard(approval: approval, onApprove: onApprove,
-                                     onReject: onReject, onRevise: onRevise)
-                    }
-                }
+                section("Requires approval", r.requiresApproval, "hand.raised", .orange)
             }
         }
     }

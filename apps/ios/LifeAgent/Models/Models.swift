@@ -74,13 +74,14 @@ struct AgentResponse: Codable, Equatable {
     let found: [String]
     let recommendations: [String]
     let prepared: [String]
-    let requiresApproval: [ApprovalRequest]
+    let requiresApproval: [String]
     let completed: [String]
     let unverified: [String]
     let securityWarnings: [String]
 
     enum CodingKeys: String, CodingKey {
-        case rationale, found, recommendations, prepared, completed, unverified
+        case found, recommendations, prepared, completed, unverified
+        case rationale = "reply"
         case requiresApproval = "requires_approval"
         case securityWarnings = "security_warnings"
     }
