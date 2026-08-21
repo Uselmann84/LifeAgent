@@ -10,8 +10,9 @@ lazily so the base app and test suite do not require them.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from app.autonomy.execution import SideEffect, guard_side_effect
 from app.core.config import Settings, get_settings
@@ -112,6 +113,9 @@ class ICloudCalendarClient:
         vcal.add("prodid", "-//Life Agent//iCloud//EN")
         vcal.add("version", "2.0")
         vevent = IEvent()
+        # iCloud rejects events without a UID/DTSTAMP; RFC 5545 requires both.
+        vevent.add("uid", f"{uuid.uuid4()}@life-agent")
+        vevent.add("dtstamp", datetime.now(tz=UTC))
         vevent.add("summary", new_event.title)
         vevent.add("dtstart", new_event.start)
         vevent.add("dtend", new_event.end)
