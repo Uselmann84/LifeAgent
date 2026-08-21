@@ -79,8 +79,16 @@ class ICloudCalendarClient:
             raise CalendarDisabled("No iCloud calendars found for this account.")
         if s.icloud_calendar_name:
             for cal in calendars:
-                if (cal.name or "") == s.icloud_calendar_name:
+                if _calendar_name(cal) == s.icloud_calendar_name:
                     return cal
+        # The account's first calendar is often a VTODO-only Reminders list, which rejects event
+        # writes with a 403; prefer the first calendar that actually accepts events.
+        for cal in calendars:
+            try:
+                if "VEVENT" in (cal.get_supported_components() or []):
+                    return cal
+            except Exception:  # pragma: no cover - component probe is best-effort
+                continue
         return calendars[0]
 
     def upcoming(self, days: int = 7) -> list[CalendarEvent]:
@@ -127,6 +135,14 @@ class ICloudCalendarClient:
 
         created = cal.save_event(vcal.to_ical().decode("utf-8"))
         return _to_event(created)
+
+
+def _calendar_name(cal) -> str:
+    """Display name of a caldav calendar, tolerating library version differences."""
+    try:
+        return str(cal.get_display_name() or "")
+    except Exception:  # pragma: no cover - fall back to the deprecated attribute
+        return str(getattr(cal, "name", "") or "")
 
 
 def _to_event(dav_event) -> CalendarEvent:
