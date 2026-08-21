@@ -12,10 +12,9 @@ from datetime import datetime, time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
 
-from app.agent import cleanup, tools
+from app.agent import cleanup_jobs, tools
 from app.api.deps import get_session, require
 from app.api.schemas import CleanupDeleteRequest, CleanupScanRequest
-from app.integrations.email.imap import EmailSyncDisabled
 
 router = APIRouter(prefix="/api/v1/email/cleanup", tags=["email-cleanup"])
 
@@ -26,25 +25,30 @@ def _to_dt(d) -> datetime:
 
 @router.post("/scan", dependencies=[Depends(require("use_integrations"))])
 def scan(body: CleanupScanRequest) -> dict:
+    """Start a background scan and return its job id. Poll GET /scan/{job_id} for progress.
+
+    The scan keeps running on the backend even if the phone app is closed, so it never blocks on a
+    mobile request timeout and streams partial results as senders are classified.
+    """
     if body.before <= body.since:
         raise HTTPException(status_code=400, detail="'before' must be after 'since'")
-    try:
-        groups = cleanup.scan_senders(since=_to_dt(body.since), before=_to_dt(body.before))
-    except EmailSyncDisabled as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+    job_id = cleanup_jobs.start_scan(since=_to_dt(body.since), before=_to_dt(body.before))
+    return {"job_id": job_id, "status": "running"}
+
+
+@router.get("/scan/{job_id}", dependencies=[Depends(require("use_integrations"))])
+def scan_status(job_id: str) -> dict:
+    job = cleanup_jobs.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Unknown scan job")
     return {
-        "items": [
-            {
-                "sender": g.sender,
-                "sender_name": g.sender_name,
-                "count": g.count,
-                "sample_subjects": g.sample_subjects,
-                "latest_at": g.latest_at.isoformat() if g.latest_at else None,
-                "category": g.category,
-                "reason": g.reason,
-            }
-            for g in groups
-        ]
+        "job_id": job["id"],
+        "status": job["status"],
+        "phase": job["phase"],
+        "processed": job["processed"],
+        "total": job["total"],
+        "error": job["error"],
+        "items": job["items"],
     }
 
 

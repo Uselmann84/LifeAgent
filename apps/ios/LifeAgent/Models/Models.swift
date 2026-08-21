@@ -90,6 +90,22 @@ struct CleanupApproval: Codable, Equatable {
     let status: String
 }
 
+/// Snapshot of a background cleanup scan. `items` grows as senders are classified.
+struct CleanupScanStatus: Codable, Equatable {
+    let jobId: String
+    let status: String   // running | done | error
+    let phase: String    // fetching | classifying | done
+    let processed: Int
+    let total: Int
+    let error: String?
+    let items: [SenderGroup]
+
+    enum CodingKeys: String, CodingKey {
+        case status, phase, processed, total, error, items
+        case jobId = "job_id"
+    }
+}
+
 // MARK: - Agent response contract
 // Mirrors AgentResponse in the backend: found / recommendations / prepared /
 // requires_approval / completed / unverified / security_warnings.

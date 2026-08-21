@@ -146,13 +146,18 @@ actor BackendClient {
         try await send(makeRequest("memory"), as: ItemsEnvelope<MemoryItem>.self).items
     }
 
-    func scanCleanup(since: String, before: String) async throws -> [SenderGroup] {
+    func startCleanupScan(since: String, before: String) async throws -> String {
         struct Body: Encodable { let since: String; let before: String }
+        struct Resp: Decodable { let job_id: String }
         let body = try encoder.encode(Body(since: since, before: before))
         return try await send(
             makeRequest("email/cleanup/scan", method: "POST", body: body),
-            as: ItemsEnvelope<SenderGroup>.self
-        ).items
+            as: Resp.self
+        ).job_id
+    }
+
+    func cleanupScanStatus(jobId: String) async throws -> CleanupScanStatus {
+        try await send(makeRequest("email/cleanup/scan/\(jobId)"), as: CleanupScanStatus.self)
     }
 
     func requestCleanupDelete(

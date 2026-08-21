@@ -10,6 +10,7 @@ fenced before being shown to the model; they are never treated as instructions.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -51,8 +52,18 @@ class SenderGroup:
     reason: str
 
 
-def scan_senders(*, since: datetime, before: datetime) -> list[SenderGroup]:
-    """Fetch headers in [since, before), group by sender, and classify each sender."""
+def scan_senders(
+    *,
+    since: datetime,
+    before: datetime,
+    on_group: Callable[[SenderGroup], None] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> list[SenderGroup]:
+    """Fetch headers in [since, before), group by sender, and classify each sender.
+
+    ``on_group``/``on_progress`` let a long-running background job stream partial results while the
+    scan is still in flight (fetching headers can take longer than a mobile request timeout).
+    """
     client = ImapEmailClient()
     headers = client.fetch_headers(since=since, before=before)
 
@@ -61,9 +72,13 @@ def scan_senders(*, since: datetime, before: datetime) -> list[SenderGroup]:
         if h.sender:
             groups[h.sender].append(h)
 
+    total = len(groups)
+    if on_progress:
+        on_progress(0, total)
+
     router: LLMRouter | None = None
     result: list[SenderGroup] = []
-    for sender, items in groups.items():
+    for idx, (sender, items) in enumerate(groups.items(), start=1):
         subjects = [i.subject for i in items if i.subject]
         sample = subjects[:3]
         name = next((i.sender_name for i in items if i.sender_name), "")
@@ -86,7 +101,12 @@ def scan_senders(*, since: datetime, before: datetime) -> list[SenderGroup]:
         else:
             category, reason = CATEGORY_KEEP, "No bulk/promotional signals detected."
 
-        result.append(SenderGroup(sender, name, len(items), sample, latest, category, reason))
+        group = SenderGroup(sender, name, len(items), sample, latest, category, reason)
+        result.append(group)
+        if on_group:
+            on_group(group)
+        if on_progress:
+            on_progress(idx, total)
 
     order = {CATEGORY_SPAM: 0, CATEGORY_ADVERTISING: 1, CATEGORY_KEEP: 2}
     result.sort(key=lambda g: (order.get(g.category, 3), -g.count))
