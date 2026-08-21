@@ -115,20 +115,28 @@ class DecisionEngine:
                     category="calendar",
                 )
             )
-            # Details came from untrusted email, so writing the event always requires approval.
-            decision = policy.evaluate(
-                "save_approved_calendar_event",
-                autonomy_level=self._settings.default_autonomy_level,
-                payload=calendar,
-                value_from_untrusted_only=True,
+            # Details came from untrusted email, so persist an approval the user must confirm before
+            # anything is written. Execution happens only through trusted code after approval.
+            from app.agent import tools
+
+            approval = tools.request_calendar_save_approval(
+                self._session,
+                title=title,
+                start=calendar.get("start"),
+                end=calendar.get("end"),
+                reason=f"Calendar block proposed from email: {event.summary}",
             )
             return Decision(
                 event_type=event.type,
                 disposition=Disposition.approval_requested,
                 detail=f"Proposed calendar block: {title} at {calendar.get('start')}.",
                 proposed_action="save_approved_calendar_event",
-                requires_approval=decision.requires_approval,
-                proposed_action_payload=calendar,
+                requires_approval=True,
+                proposed_action_payload={
+                    **calendar,
+                    "approval_id": approval.id,
+                    "payload_hash": approval.payload_hash,
+                },
             )
         if importance in {"critical", "needs_action_today"}:
             self._notifier.dispatch(

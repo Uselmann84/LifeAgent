@@ -8,7 +8,7 @@ approval policy and write audit entries. See docs/PERMISSION_MATRIX.md.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlmodel import Session
@@ -352,6 +352,103 @@ def send_approved_imessage(
         reversible=False,
     )
     return {"dispatched": True, "approval_id": approval.id}
+
+
+def request_calendar_save_approval(
+    session: Session,
+    *,
+    title: str,
+    start: str,
+    end: str | None,
+    reason: str,
+    autonomy_level: int | None = None,
+) -> ApprovalRequest:
+    """Create an approval request bound to the exact calendar-event payload.
+
+    The event details originate from untrusted email, so writing the event always requires explicit
+    approval regardless of autonomy level (``value_from_untrusted_only``).
+    """
+    settings = get_settings()
+    level = autonomy_level if autonomy_level is not None else settings.default_autonomy_level
+    payload = {"title": title, "start": start, "end": end}
+    decision = policy.evaluate(
+        "save_approved_calendar_event",
+        autonomy_level=level,
+        payload=payload,
+        value_from_untrusted_only=True,
+    )
+    approval = ApprovalRequest(
+        action_type="save_approved_calendar_event",
+        reason=reason,
+        data_affected=f"calendar event: {title}",
+        payload=payload,
+        payload_hash=policy.compute_payload_hash(payload),
+        risk_level=decision.risk_level,
+        status=ApprovalStatus.pending,
+        expires_at=policy.new_approval_ttl(),
+    )
+    session.add(approval)
+    session.commit()
+    session.refresh(approval)
+    audit.record_action(
+        session,
+        planned_action="request_calendar_save_approval",
+        tools_used=["request_calendar_save_approval"],
+        inputs={"title": title, "start": start},
+        outputs={"approval_id": approval.id},
+        reasoning_summary="Prepared a calendar write from an email; awaiting explicit user approval.",
+        approval_id=approval.id,
+        success=True,
+    )
+    session.refresh(approval)  # audit commit expires the instance; reload before returning
+    return approval
+
+
+def save_approved_calendar_event(
+    session: Session, *, approval: ApprovalRequest, submitted_payload_hash: str
+) -> dict[str, Any]:
+    """Write a calendar event ONLY with a valid, unexpired, payload-matched approval.
+
+    Real writes cross the execution boundary (Section 35.8): refused entirely outside a fully
+    authorized Backend Mac. In simulation the intent is recorded with no external effect.
+    """
+    policy.validate_approval(approval, submitted_payload_hash)
+
+    if simulate_or_block(SideEffect.modify_calendar):
+        audit.record_action(
+            session,
+            planned_action="save_approved_calendar_event",
+            tools_used=["save_approved_calendar_event"],
+            inputs={"title": approval.payload.get("title")},
+            outputs={"created": False, "reason": "simulated (execution boundary)"},
+            reasoning_summary="Approval valid, but real calendar writes are not permitted in this mode.",
+            approval_id=approval.id,
+            success=None,
+            reversible=False,
+        )
+        return {"created": False, "reason": "simulated", "approval_id": approval.id}
+
+    guard_side_effect(SideEffect.modify_calendar)
+    from app.integrations.calendar.icloud import ICloudCalendarClient, NewCalendarEvent
+
+    payload = approval.payload
+    start = datetime.fromisoformat(payload["start"])
+    end = datetime.fromisoformat(payload["end"]) if payload.get("end") else start + timedelta(hours=1)
+    event = ICloudCalendarClient().create_event(
+        NewCalendarEvent(title=payload.get("title", ""), start=start, end=end)
+    )
+    audit.record_action(
+        session,
+        planned_action="save_approved_calendar_event",
+        tools_used=["save_approved_calendar_event"],
+        inputs={"title": payload.get("title"), "start": payload.get("start")},
+        outputs={"created": True, "uid": event.uid},
+        reasoning_summary="Approval valid; event written to iCloud via CalDAV.",
+        approval_id=approval.id,
+        success=True,
+        reversible=False,
+    )
+    return {"created": True, "uid": event.uid, "approval_id": approval.id}
 
 
 def move_email_to_spam(session: Session, *, message_id: str) -> dict[str, Any]:
