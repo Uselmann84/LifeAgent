@@ -1,0 +1,67 @@
+# XcodeGen project spec for the Life Agent iOS app.
+#
+# Generate the .xcodeproj (which is intentionally NOT committed — see .gitignore):
+#   cd apps/ios && xcodegen generate
+# then open LifeAgent.xcodeproj in Xcode.
+#
+# The three configurations map 1:1 to the committed xcconfig files, which carry the
+# per-environment bundle id, default backend URL, and environment banner value.
+# No secrets live here or in xcconfig — the device token lives only in the Keychain.
+
+name: LifeAgent
+
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  minimumXcodeGenVersion: "2.40.0"
+
+# Internal is a Release-flavoured config pointed at the Backend Mac (still non-production).
+configs:
+  Debug: debug
+  Internal: release
+  Release: release
+
+targets:
+  LifeAgent:
+    type: application
+    platform: iOS
+    # xcconfig drives PRODUCT_BUNDLE_IDENTIFIER, versions, deployment target,
+    # LA_DEFAULT_BACKEND_URL and LA_DEFAULT_ENVIRONMENT per configuration.
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Internal: Config/Internal.xcconfig
+      Release: Config/Release.xcconfig
+    sources:
+      - path: LifeAgent
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        # Use the committed Info.plist as the base and let INFOPLIST_KEY_* in
+        # Base.xcconfig add the launch screen + scene manifest at build time.
+        INFOPLIST_FILE: LifeAgent/Info.plist
+        GENERATE_INFOPLIST_FILE: "YES"
+        PRODUCT_NAME: Life Agent
+        # Defer to the xcconfig value instead of the XcodeGen bundleIdPrefix default.
+        PRODUCT_BUNDLE_IDENTIFIER: "$(inherited)"
+        # Automatic signing: set your Development Team in Xcode's Signing tab
+        # (or a git-ignored Config/Signing.xcconfig) before installing on a device.
+        CODE_SIGN_STYLE: Automatic
+
+# Explicit scheme so Run uses Debug and Archive uses Release; Internal is selectable.
+schemes:
+  LifeAgent:
+    build:
+      targets:
+        LifeAgent: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
