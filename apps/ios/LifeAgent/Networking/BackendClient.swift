@@ -160,6 +160,14 @@ actor BackendClient {
         try await send(makeRequest("email/cleanup/scan/\(jobId)"), as: CleanupScanStatus.self)
     }
 
+    func cancelCleanupScan(jobId: String) async throws {
+        struct Resp: Decodable { let status: String }
+        _ = try await send(
+            makeRequest("email/cleanup/scan/\(jobId)/cancel", method: "POST"),
+            as: Resp.self
+        )
+    }
+
     func requestCleanupDelete(
         senders: [String], since: String, before: String, reason: String?
     ) async throws -> CleanupApproval {

@@ -52,6 +52,13 @@ def scan_status(job_id: str) -> dict:
     }
 
 
+@router.post("/scan/{job_id}/cancel", dependencies=[Depends(require("use_integrations"))])
+def cancel_scan(job_id: str) -> dict:
+    if not cleanup_jobs.cancel_scan(job_id):
+        raise HTTPException(status_code=404, detail="Unknown scan job")
+    return {"job_id": job_id, "status": "cancelling"}
+
+
 @router.post("/request-delete", dependencies=[Depends(require("approve_actions"))])
 def request_delete(body: CleanupDeleteRequest, session: Session = Depends(get_session)) -> dict:
     if not body.senders:

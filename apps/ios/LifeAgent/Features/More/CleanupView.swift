@@ -52,9 +52,17 @@ struct CleanupView: View {
                     Label(isRunning ? "Scanning…" : "Identify spam", systemImage: "sparkle.magnifyingglass")
                 }
                 .disabled(isRunning)
+
+                if isRunning {
+                    Button(role: .destructive) {
+                        Task { await stopScan() }
+                    } label: {
+                        Label("Stop scan", systemImage: "stop.circle")
+                    }
+                }
             }
 
-            if isRunning || (jobStatus == "done" && !groups.isEmpty) {
+            if isRunning || (terminalWithResults) {
                 progressSection
             }
 
@@ -85,6 +93,10 @@ struct CleanupView: View {
 
     private var isRunning: Bool { jobStatus == "running" }
 
+    private var terminalWithResults: Bool {
+        (jobStatus == "done" || jobStatus == "cancelled") && !groups.isEmpty
+    }
+
     private var progressSection: some View {
         Section {
             HStack(spacing: 12) {
@@ -103,6 +115,7 @@ struct CleanupView: View {
     private var progressTitle: String {
         switch (jobStatus, phase) {
         case ("done", _): return "Done — \(groups.count) senders"
+        case ("cancelled", _): return "Stopped — \(groups.count) senders so far"
         case (_, "fetching"): return "Reading inbox…"
         default:
             return total > 0 ? "Classifying \(processed)/\(total)…" : "Scanning…"
@@ -225,6 +238,11 @@ struct CleanupView: View {
         startPolling(savedJobId)
     }
 
+    private func stopScan() async {
+        guard let id = jobId else { return }
+        do { try await appState.client.cancelCleanupScan(jobId: id) } catch { /* polling will reflect state */ }
+    }
+
     private func startPolling(_ id: String) {
         pollTask?.cancel()
         pollTask = Task {
@@ -238,7 +256,7 @@ struct CleanupView: View {
                     phase = s.phase
                     groups = s.items
                     jobStatus = s.status
-                    if s.status == "done" { return }
+                    if s.status == "done" || s.status == "cancelled" { return }
                     if s.status == "error" {
                         errorText = s.error ?? "Scan failed"
                         clearSaved()
