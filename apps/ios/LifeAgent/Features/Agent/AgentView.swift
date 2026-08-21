@@ -61,7 +61,12 @@ struct AgentView: View {
             let response = try await appState.client.chat(message: message)
             turns.append(AgentTurn(role: .agent, response: response))
         } catch {
-            turns.append(AgentTurn(role: .agent, response: MockData.agentResponse))
+            let failure = AgentResponse(
+                rationale: "Couldn't reach the backend: \(error.localizedDescription)",
+                found: [], recommendations: [], prepared: [],
+                requiresApproval: [], completed: [], unverified: [], securityWarnings: []
+            )
+            turns.append(AgentTurn(role: .agent, response: failure))
         }
     }
 

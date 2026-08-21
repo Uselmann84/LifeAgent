@@ -33,8 +33,7 @@ struct ApprovalsView: View {
     }
 
     private func reload() async {
-        await loader.load(fetch: { try await appState.client.approvals() },
-                          fallback: [MockData.approval])
+        await loader.load(fetch: { try await appState.client.approvals() })
     }
 
     private func resolve(_ approval: ApprovalRequest,

@@ -21,7 +21,7 @@ struct MemoryView: View {
     }
 
     private func reload() async {
-        await loader.load(fetch: { try await appState.client.memory() }, fallback: MockData.memory)
+        await loader.load(fetch: { try await appState.client.memory() })
     }
 }
 

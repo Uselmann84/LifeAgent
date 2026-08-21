@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Generic async loading state for a fetched value, with an offline/mock fallback.
+/// Generic async loading state for a fetched value.
 enum Loadable<Value> {
     case idle
     case loading
@@ -8,21 +8,18 @@ enum Loadable<Value> {
     case failed(String)
 }
 
-/// Loads `fetch()`; on failure falls back to `mock` and marks the view offline.
+/// Loads `fetch()`; surfaces live data only. On failure the error is shown —
+/// there is no mock/offline fallback.
 @MainActor
 final class Loader<Value>: ObservableObject {
     @Published var state: Loadable<Value> = .idle
-    @Published var usingFallback = false
 
-    func load(fetch: @escaping () async throws -> Value, fallback: @autoclosure () -> Value) async {
+    func load(fetch: @escaping () async throws -> Value) async {
         state = .loading
         do {
-            let value = try await fetch()
-            usingFallback = false
-            state = .loaded(value)
+            state = .loaded(try await fetch())
         } catch {
-            usingFallback = true
-            state = .loaded(fallback())
+            state = .failed(error.localizedDescription)
         }
     }
 }

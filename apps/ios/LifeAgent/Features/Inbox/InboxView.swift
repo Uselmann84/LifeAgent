@@ -34,7 +34,7 @@ struct InboxView: View {
     }
 
     private func reload() async {
-        await loader.load(fetch: { try await appState.client.today() }, fallback: MockData.today)
+        await loader.load(fetch: { try await appState.client.today() })
     }
 }
 

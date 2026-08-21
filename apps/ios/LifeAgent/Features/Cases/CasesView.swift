@@ -46,7 +46,7 @@ struct CasesView: View {
     }
 
     private func reload() async {
-        await loader.load(fetch: { try await appState.client.cases() }, fallback: MockData.cases)
+        await loader.load(fetch: { try await appState.client.cases() })
     }
 }
 

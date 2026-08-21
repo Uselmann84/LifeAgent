@@ -24,7 +24,7 @@ struct EnvironmentBanner: View {
     }
 
     private var bannerText: String {
-        if isOffline { return "Backend offline — showing cached data" }
+        if isOffline { return "Backend offline" }
         return "\(environment.displayName) backend — not production data"
     }
 

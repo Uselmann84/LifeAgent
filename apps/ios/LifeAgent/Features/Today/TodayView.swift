@@ -66,8 +66,7 @@ struct TodayView: View {
 
     private func reload() async {
         await appState.refreshHealth()
-        await loader.load(fetch: { try await appState.client.today() },
-                          fallback: MockData.today)
+        await loader.load(fetch: { try await appState.client.today() })
     }
 }
 

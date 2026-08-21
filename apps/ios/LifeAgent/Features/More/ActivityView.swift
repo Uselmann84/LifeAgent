@@ -24,7 +24,7 @@ struct ActivityView: View {
     }
 
     private func reload() async {
-        await loader.load(fetch: { try await appState.client.activity() }, fallback: MockData.activity)
+        await loader.load(fetch: { try await appState.client.activity() })
     }
 }
 

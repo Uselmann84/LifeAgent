@@ -12,9 +12,14 @@ final class AppState: ObservableObject {
 
     private(set) var client: BackendClient
 
-    init(profile: ConnectionProfile = .bootstrap) {
-        self.profile = profile
-        self.client = BackendClient(profile: profile)
+    private static let profileKey = "com.lifeagent.activeProfile"
+
+    init(profile: ConnectionProfile? = nil) {
+        // Live mode: reuse the last saved connection so it survives relaunches;
+        // only fall back to the compile-time bootstrap on first run.
+        let resolved = profile ?? AppState.loadPersistedProfile() ?? .bootstrap
+        self.profile = resolved
+        self.client = BackendClient(profile: resolved)
     }
 
     var environment: BackendEnvironment {
@@ -28,7 +33,18 @@ final class AppState: ObservableObject {
     func switchProfile(_ newProfile: ConnectionProfile) async {
         profile = newProfile
         client = BackendClient(profile: newProfile)
+        AppState.persistProfile(newProfile)
         await refreshHealth()
+    }
+
+    private static func loadPersistedProfile() -> ConnectionProfile? {
+        guard let data = UserDefaults.standard.data(forKey: profileKey) else { return nil }
+        return try? JSONDecoder().decode(ConnectionProfile.self, from: data)
+    }
+
+    private static func persistProfile(_ profile: ConnectionProfile) {
+        guard let data = try? JSONEncoder().encode(profile) else { return }
+        UserDefaults.standard.set(data, forKey: profileKey)
     }
 
     func refreshHealth() async {
