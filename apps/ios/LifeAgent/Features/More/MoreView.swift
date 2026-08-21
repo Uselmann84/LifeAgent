@@ -18,6 +18,12 @@ struct MoreView: View {
                     }
                 }
 
+                Section("Inbox") {
+                    NavigationLink { CleanupView() } label: {
+                        Label("Email cleanup", systemImage: "trash.slash")
+                    }
+                }
+
                 Section("Backend") {
                     NavigationLink { ConnectionSettingsView() } label: {
                         Label("Connection", systemImage: "network")

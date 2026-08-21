@@ -65,6 +65,31 @@ struct EmailSummary: Codable, Equatable, Identifiable {
     let importance: String?
 }
 
+// MARK: - Email cleanup
+
+struct SenderGroup: Codable, Equatable, Identifiable {
+    var id: String { sender }
+    let sender: String
+    let senderName: String
+    let count: Int
+    let sampleSubjects: [String]
+    let latestAt: String?
+    let category: String
+    let reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case sender, count, category, reason
+        case senderName = "sender_name"
+        case sampleSubjects = "sample_subjects"
+        case latestAt = "latest_at"
+    }
+}
+
+struct CleanupApproval: Codable, Equatable {
+    let id: String
+    let status: String
+}
+
 // MARK: - Agent response contract
 // Mirrors AgentResponse in the backend: found / recommendations / prepared /
 // requires_approval / completed / unverified / security_warnings.

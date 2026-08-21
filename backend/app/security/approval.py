@@ -40,6 +40,7 @@ CONSEQUENTIAL_ACTIONS: frozenset[str] = frozenset(
         "agree_settlement",
         "contact_authority",  # attorneys, government, insurers, employers on consequential matters
         "message_new_recipient",
+        "delete_emails_permanently",
     }
 )
 
@@ -68,6 +69,7 @@ IRREVERSIBLE_ACTIONS: frozenset[str] = frozenset(
         "move_money",
         "delete_important_data",
         "cancel_insurance",
+        "delete_emails_permanently",
     }
 )
 

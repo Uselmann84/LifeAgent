@@ -48,6 +48,19 @@ class FetchedEmail:
     attachments: list[FetchedAttachment] = field(default_factory=list)
 
 
+@dataclass
+class HeaderInfo:
+    """Lightweight header view of a message used by the bulk-cleanup scanner."""
+
+    uid: str
+    sender: str
+    sender_name: str
+    subject: str
+    received_at: datetime
+    list_unsubscribe: bool
+    precedence: str
+
+
 def _decode(value: str | None) -> str:
     if not value:
         return ""
@@ -151,6 +164,98 @@ class ImapEmailClient:
             conn.logout()
         return results
 
+    _HEADER_FIELDS = "(FROM SUBJECT DATE LIST-UNSUBSCRIBE PRECEDENCE)"
+
+    @staticmethod
+    def _imap_date(d: datetime) -> str:
+        return d.strftime("%d-%b-%Y")
+
+    def fetch_headers(
+        self, *, since: datetime, before: datetime, mailbox: str | None = None
+    ) -> list[HeaderInfo]:
+        """Fetch lightweight headers for messages received in [since, before). Read-only."""
+        self._ensure_permitted()
+        s = self._settings
+        box = mailbox or s.email_mailbox
+        results: list[HeaderInfo] = []
+        conn = imaplib.IMAP4_SSL(s.imap_host, s.imap_port)
+        try:
+            conn.login(s.email_address, s.email_password)
+            conn.select(box, readonly=True)
+            typ, data = conn.search(
+                None, "SINCE", self._imap_date(since), "BEFORE", self._imap_date(before)
+            )
+            if typ != "OK" or not data or not data[0]:
+                return []
+            for uid in data[0].split():
+                typ, msg_data = conn.fetch(uid, f"(BODY.PEEK[HEADER.FIELDS {self._HEADER_FIELDS}])")
+                if typ != "OK" or not msg_data or not isinstance(msg_data[0], tuple):
+                    continue
+                msg = email.message_from_bytes(msg_data[0][1])
+                name, addr = _addr_name(msg.get("From", ""))
+                results.append(
+                    HeaderInfo(
+                        uid=uid.decode() if isinstance(uid, bytes) else str(uid),
+                        sender=addr,
+                        sender_name=name,
+                        subject=_decode(msg.get("Subject")),
+                        received_at=_parse_date(msg),
+                        list_unsubscribe=bool(msg.get("List-Unsubscribe")),
+                        precedence=(msg.get("Precedence") or "").strip().lower(),
+                    )
+                )
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn.logout()
+        return results
+
+    def delete_by_senders(
+        self, *, senders: list[str], since: datetime, before: datetime, mailbox: str | None = None
+    ) -> int:
+        """PERMANENTLY delete (\\Deleted + EXPUNGE) mail from the given senders in the range.
+
+        Destructive and irreversible. Only reachable on the Backend Mac; the caller MUST have
+        already passed the approval policy and the SideEffect.move_email guard.
+        """
+        self._ensure_permitted()
+        s = self._settings
+        box = mailbox or s.email_mailbox
+        wanted = sorted({a.strip().lower() for a in senders if a.strip()})
+        if not wanted:
+            return 0
+        deleted = 0
+        conn = imaplib.IMAP4_SSL(s.imap_host, s.imap_port)
+        try:
+            conn.login(s.email_address, s.email_password)
+            conn.select(box, readonly=False)
+            for addr in wanted:
+                typ, data = conn.search(
+                    None,
+                    "FROM",
+                    f'"{addr}"',
+                    "SINCE",
+                    self._imap_date(since),
+                    "BEFORE",
+                    self._imap_date(before),
+                )
+                if typ != "OK" or not data or not data[0]:
+                    continue
+                for uid in data[0].split():
+                    conn.store(uid, "+FLAGS", r"(\Deleted)")
+                    deleted += 1
+            if deleted:
+                conn.expunge()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            conn.logout()
+        return deleted
+
 
 def _parse_sender(msg: Message) -> str:
     addrs = getaddresses([msg.get("From", "")])
@@ -171,3 +276,12 @@ def _parse_date(msg: Message) -> datetime:
         return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
     except Exception:
         return datetime.now(UTC)
+
+
+def _addr_name(raw_from: str) -> tuple[str, str]:
+    """Return (display name, lowercased address) parsed from a raw From header."""
+    addrs = getaddresses([raw_from or ""])
+    if not addrs:
+        return "", ""
+    name, addr = addrs[0]
+    return _decode(name), (addr or "").strip().lower()

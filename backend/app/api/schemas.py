@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -60,6 +60,18 @@ class EmailDraftRequest(BaseModel):
     subject: str
     intent: str | None = None
     thread_id: str | None = None
+
+
+class CleanupScanRequest(BaseModel):
+    since: date
+    before: date
+
+
+class CleanupDeleteRequest(BaseModel):
+    senders: list[str]
+    since: date
+    before: date
+    reason: str | None = None
 
 
 class ApproveRequest(BaseModel):

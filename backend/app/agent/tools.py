@@ -73,6 +73,12 @@ TOOL_REGISTRY: dict[str, ToolSpec] = {
         "send_approved_imessage", "Send an approved iMessage", True, False, True, "controlled_action"
     ),
     "move_email_to_spam": ToolSpec("move_email_to_spam", "Move email to spam", True, True, True, "controlled_action"),
+    "request_email_cleanup_approval": ToolSpec(
+        "request_email_cleanup_approval", "Create bulk-delete approval", False, True, True, "demo"
+    ),
+    "delete_emails_permanently": ToolSpec(
+        "delete_emails_permanently", "Permanently delete emails", True, False, False, "controlled_action"
+    ),
 }
 
 
@@ -457,6 +463,95 @@ def move_email_to_spam(session: Session, *, message_id: str) -> dict[str, Any]:
         return {"moved": False, "reason": "simulated (execution boundary)", "message_id": message_id}
     guard_side_effect(SideEffect.move_email)
     raise ToolError("Real spam move is not implemented until Phase 4.")
+
+
+def _parse_date_str(value: str | None) -> datetime:
+    return datetime.strptime(str(value), "%Y-%m-%d")
+
+
+def request_email_cleanup_approval(
+    session: Session, *, senders: list[str], since: str, before: str, reason: str
+) -> ApprovalRequest:
+    """Create an approval bound to a permanent bulk-delete of the given senders in a date range."""
+    payload = {
+        "senders": sorted({s.strip().lower() for s in senders if s.strip()}),
+        "since": since,
+        "before": before,
+    }
+    decision = policy.evaluate("delete_emails_permanently", autonomy_level=0, payload=payload)
+    approval = ApprovalRequest(
+        action_type="delete_emails_permanently",
+        reason=reason,
+        data_affected=(
+            f"permanently delete mail from {len(payload['senders'])} sender(s), {since}..{before}"
+        ),
+        payload=payload,
+        payload_hash=policy.compute_payload_hash(payload),
+        risk_level=decision.risk_level,
+        status=ApprovalStatus.pending,
+        expires_at=policy.new_approval_ttl(),
+    )
+    session.add(approval)
+    session.commit()
+    session.refresh(approval)
+    audit.record_action(
+        session,
+        planned_action="request_email_cleanup_approval",
+        tools_used=["request_email_cleanup_approval"],
+        inputs={"senders": payload["senders"], "since": since, "before": before},
+        outputs={"approval_id": approval.id, "payload_hash": approval.payload_hash},
+        reasoning_summary="Prepared a permanent bulk-delete; awaiting explicit user approval.",
+        approval_id=approval.id,
+        success=True,
+    )
+    session.refresh(approval)  # audit commit expires the instance; reload before returning
+    return approval
+
+
+def execute_email_cleanup(
+    session: Session, *, approval: ApprovalRequest, submitted_payload_hash: str
+) -> dict[str, Any]:
+    """Execute a permanent bulk-delete ONLY with a valid, payload-matched approval.
+
+    Deletion is irreversible and crosses the execution boundary: it is refused outside a fully
+    authorized Backend Mac. In simulation the intent is recorded with no external effect.
+    """
+    policy.validate_approval(approval, submitted_payload_hash)
+    payload = approval.payload
+    senders = list(payload.get("senders") or [])
+    since = _parse_date_str(payload.get("since"))
+    before = _parse_date_str(payload.get("before"))
+
+    if simulate_or_block(SideEffect.move_email):
+        audit.record_action(
+            session,
+            planned_action="delete_emails_permanently",
+            tools_used=["delete_emails_permanently"],
+            inputs={"senders": senders},
+            outputs={"executed": False, "reason": "simulated (execution boundary)"},
+            reasoning_summary="Approval valid, but permanent deletion is not permitted in this mode.",
+            approval_id=approval.id,
+            success=None,
+            reversible=False,
+        )
+        return {"executed": False, "reason": "simulated", "approval_id": approval.id}
+
+    guard_side_effect(SideEffect.move_email)
+    from app.integrations.email.imap import ImapEmailClient
+
+    deleted = ImapEmailClient().delete_by_senders(senders=senders, since=since, before=before)
+    audit.record_action(
+        session,
+        planned_action="delete_emails_permanently",
+        tools_used=["delete_emails_permanently"],
+        inputs={"senders": senders},
+        outputs={"executed": True, "deleted": deleted},
+        reasoning_summary="Approval valid; messages permanently deleted via IMAP.",
+        approval_id=approval.id,
+        success=True,
+        reversible=False,
+    )
+    return {"executed": True, "deleted": deleted, "senders": senders, "approval_id": approval.id}
 
 
 def schedule_follow_up(

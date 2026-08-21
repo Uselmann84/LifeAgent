@@ -145,4 +145,29 @@ actor BackendClient {
     func memory() async throws -> [MemoryItem] {
         try await send(makeRequest("memory"), as: ItemsEnvelope<MemoryItem>.self).items
     }
+
+    func scanCleanup(since: String, before: String) async throws -> [SenderGroup] {
+        struct Body: Encodable { let since: String; let before: String }
+        let body = try encoder.encode(Body(since: since, before: before))
+        return try await send(
+            makeRequest("email/cleanup/scan", method: "POST", body: body),
+            as: ItemsEnvelope<SenderGroup>.self
+        ).items
+    }
+
+    func requestCleanupDelete(
+        senders: [String], since: String, before: String, reason: String?
+    ) async throws -> CleanupApproval {
+        struct Body: Encodable {
+            let senders: [String]
+            let since: String
+            let before: String
+            let reason: String?
+        }
+        let body = try encoder.encode(Body(senders: senders, since: since, before: before, reason: reason))
+        return try await send(
+            makeRequest("email/cleanup/request-delete", method: "POST", body: body),
+            as: CleanupApproval.self
+        )
+    }
 }

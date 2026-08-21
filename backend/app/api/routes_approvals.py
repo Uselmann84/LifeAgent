@@ -102,6 +102,8 @@ def approve(
         result = tools.send_approved_imessage(session, approval=a, submitted_payload_hash=body.payload_hash)
     elif a.action_type == "save_approved_calendar_event":
         result = tools.save_approved_calendar_event(session, approval=a, submitted_payload_hash=body.payload_hash)
+    elif a.action_type == "delete_emails_permanently":
+        result = tools.execute_email_cleanup(session, approval=a, submitted_payload_hash=body.payload_hash)
     a.execution_result = str(result)
     session.add(a)
     session.commit()
@@ -114,7 +116,7 @@ def approve(
         outputs=result,
         reasoning_summary="User approved the action; executed through trusted code.",
         approval_id=a.id,
-        success=bool(result.get("dispatched") or result.get("created")) if isinstance(result, dict) else None,
+        success=bool(result.get("dispatched") or result.get("created") or result.get("executed")) if isinstance(result, dict) else None,
         reversible=False,
     )
     return {"status": a.status.value, "result": result}
