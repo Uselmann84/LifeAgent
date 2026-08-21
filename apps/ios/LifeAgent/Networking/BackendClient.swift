@@ -37,7 +37,14 @@ actor BackendClient {
     // MARK: Requests
 
     private func makeRequest(_ path: String, method: String = "GET", body: Data? = nil) throws -> URLRequest {
-        let url = profile.apiRoot.appendingPathComponent(path)
+        // Split off any query string; appendingPathComponent would percent-encode "?".
+        let parts = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
+        let base = profile.apiRoot.appendingPathComponent(String(parts[0]))
+        guard var comps = URLComponents(url: base, resolvingAgainstBaseURL: false) else {
+            throw BackendError.transport("bad URL")
+        }
+        if parts.count > 1 { comps.percentEncodedQuery = String(parts[1]) }
+        guard let url = comps.url else { throw BackendError.transport("bad URL") }
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.timeoutInterval = 15

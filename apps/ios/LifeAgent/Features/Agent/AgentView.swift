@@ -8,6 +8,7 @@ struct AgentView: View {
     @State private var input = ""
     @State private var turns: [AgentTurn] = []
     @State private var sending = false
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -25,9 +26,16 @@ struct AgentView: View {
                 .onChange(of: turns.count) { _, _ in
                     if let last = turns.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .safeAreaInset(edge: .bottom) { composer }
             .navigationTitle("Agent")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { composerFocused = false }
+                }
+            }
         }
     }
 
@@ -36,6 +44,7 @@ struct AgentView: View {
             TextField("Ask Life Agent…", text: $input, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...4)
+                .focused($composerFocused)
             Button {
                 Task { await send() }
             } label: {
@@ -52,6 +61,7 @@ struct AgentView: View {
         guard !message.isEmpty else { return }
         turns.append(AgentTurn(role: .user, text: message))
         input = ""
+        composerFocused = false
         sending = true
         defer { sending = false }
         do {
