@@ -92,7 +92,7 @@ struct ApprovalRequest: Codable, Equatable, Identifiable {
     let id: String
     let actionType: String
     let summary: String
-    let externalEffect: String
+    let externalEffect: String?
     let riskLevel: String
     let target: String?
     let payload: [String: AnyCodable]
@@ -102,13 +102,14 @@ struct ApprovalRequest: Codable, Equatable, Identifiable {
     let relatedCaseId: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, summary, target, payload, status
+        case id, target, payload, status
+        case summary = "reason"
         case actionType = "action_type"
-        case externalEffect = "external_effect"
+        case externalEffect = "data_affected"
         case riskLevel = "risk_level"
         case payloadHash = "payload_hash"
         case expiresAt = "expires_at"
-        case relatedCaseId = "related_case_id"
+        case relatedCaseId = "case_id"
     }
 
     /// Level-4 (irreversible/external high-risk) actions require device auth.
@@ -138,11 +139,13 @@ struct CaseItem: Codable, Equatable, Identifiable {
 struct ActivityEntry: Codable, Equatable, Identifiable {
     let id: String
     let action: String
-    let summary: String
+    let summary: String?
     let createdAt: String
 
     enum CodingKeys: String, CodingKey {
-        case id, action, summary
+        case id
+        case action = "planned_action"
+        case summary = "reasoning_summary"
         case createdAt = "created_at"
     }
 }
@@ -154,8 +157,9 @@ struct MemoryItem: Codable, Equatable, Identifiable {
     let createdAt: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, content, category
-        case createdAt = "created_at"
+        case id, content
+        case category = "kind"
+        case createdAt = "learned_at"
     }
 }
 

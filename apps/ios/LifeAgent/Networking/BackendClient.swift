@@ -76,6 +76,9 @@ actor BackendClient {
 
     // MARK: Endpoints
 
+    // Backend wraps list responses as {"items": [...]}.
+    private struct ItemsEnvelope<T: Decodable>: Decodable { let items: [T] }
+
     func health() async throws -> HealthStatus {
         try await send(makeRequest("health"), as: HealthStatus.self)
     }
@@ -91,7 +94,7 @@ actor BackendClient {
     }
 
     func approvals(status: String = "pending") async throws -> [ApprovalRequest] {
-        try await send(makeRequest("approvals?status=\(status)"), as: [ApprovalRequest].self)
+        try await send(makeRequest("approvals?status=\(status)"), as: ItemsEnvelope<ApprovalRequest>.self).items
     }
 
     /// Approve is bound to the exact payload hash. If the backend's current hash
@@ -125,14 +128,14 @@ actor BackendClient {
 
     func cases(status: String? = nil) async throws -> [CaseItem] {
         let path = status.map { "cases?status=\($0)" } ?? "cases"
-        return try await send(makeRequest(path), as: [CaseItem].self)
+        return try await send(makeRequest(path), as: ItemsEnvelope<CaseItem>.self).items
     }
 
     func activity() async throws -> [ActivityEntry] {
-        try await send(makeRequest("activity"), as: [ActivityEntry].self)
+        try await send(makeRequest("activity"), as: ItemsEnvelope<ActivityEntry>.self).items
     }
 
     func memory() async throws -> [MemoryItem] {
-        try await send(makeRequest("memory"), as: [MemoryItem].self)
+        try await send(makeRequest("memory"), as: ItemsEnvelope<MemoryItem>.self).items
     }
 }

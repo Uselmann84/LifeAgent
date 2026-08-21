@@ -25,9 +25,11 @@ struct ApprovalCard: View {
 
             Text(approval.summary).font(.headline)
 
-            Label(approval.externalEffect, systemImage: "arrow.up.forward.app")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            if let effect = approval.externalEffect {
+                Label(effect, systemImage: "arrow.up.forward.app")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             if let target = approval.target {
                 Label(target, systemImage: "person.crop.circle")

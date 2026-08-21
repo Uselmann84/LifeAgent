@@ -8,7 +8,8 @@ struct ActivityView: View {
         LoadableContent(state: loader.state) { entries in
             List(entries) { entry in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.summary).font(.subheadline)
+                    Text(entry.summary ?? entry.action.replacingOccurrences(of: "_", with: " "))
+                        .font(.subheadline)
                     HStack {
                         Text(entry.action.replacingOccurrences(of: "_", with: " "))
                             .font(.caption).foregroundStyle(.secondary)
