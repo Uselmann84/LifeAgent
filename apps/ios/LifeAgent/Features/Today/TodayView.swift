@@ -59,13 +59,19 @@ struct TodayView: View {
                 }
             }
             .navigationTitle("Today")
-            .refreshable { await reload() }
+            .refreshable { await loadToday() }
             .task { await reload() }
         }
     }
 
     private func reload() async {
         await appState.refreshHealth()
+        await loadToday()
+    }
+
+    // Kept out of the refreshable path: refreshHealth() mutates published state
+    // mid-pull, which rebuilds the List and cancels the in-flight request.
+    private func loadToday() async {
         await loader.load(fetch: { try await appState.client.today() })
     }
 }
